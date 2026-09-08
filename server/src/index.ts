@@ -33,7 +33,21 @@ async function main(): Promise<void> {
   await registerRoutes(app, runner);
 
   if (existsSync(publicDir)) {
-    await app.register(fastifyStatic, { root: publicDir, prefix: '/' });
+    await app.register(fastifyStatic, {
+      root: publicDir,
+      prefix: '/',
+      // Vite fingerprints asset filenames, so their contents can never change
+      // under a given URL — cache them hard. index.html is the mutable entry
+      // point that names the current bundles, so it must always revalidate,
+      // otherwise a browser can keep pointing at assets a deploy has removed.
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    });
     // SPA fallback for any non-API path.
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/')) {

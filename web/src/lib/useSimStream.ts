@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TribeRow, Vitals, WorldEvent, WorldState } from './types';
+import type { AgentFrame, TribeRow, Vitals, WorldEvent, WorldState } from './types';
 
 const b64ToBytes = (b64: string): Uint8Array => {
   const bin = atob(b64);
@@ -13,6 +13,21 @@ const b64ToInt16 = (b64: string): Int16Array => {
   return new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
 };
 
+const b64ToInt32 = (b64: string): Int32Array => {
+  const bytes = b64ToBytes(b64);
+  return new Int32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+};
+
+/** Index a detail payload by agent id so consecutive frames can be stitched. */
+const toAgentFrame = (tick: number, data: Int32Array): AgentFrame => {
+  const index = new Map<number, number>();
+  for (let o = 0; o < data.length; o += 7) index.set(data[o], o);
+  return { tick, index, data };
+};
+
+/** How many frames of positions to retain for movement trails. */
+const TRAIL_FRAMES = 10;
+
 export type ConnectionState = 'connecting' | 'live' | 'offline';
 
 interface Stream {
@@ -24,6 +39,8 @@ interface Stream {
   world: React.MutableRefObject<WorldState | null>;
   /** Bumps whenever the world buffers change, so the map knows to repaint. */
   worldVersion: number;
+  /** Recent agent-detail frames, oldest first. Empty unless `detail` was set. */
+  agentHistory: React.MutableRefObject<AgentFrame[]>;
 }
 
 const EVENT_LIMIT = 300;
@@ -36,13 +53,14 @@ const EVENT_LIMIT = 300;
  * buffers in a ref (rather than React state) means a 128x128 world repaints
  * through one canvas draw instead of a reconciliation pass.
  */
-export function useSimStream(): Stream {
+export function useSimStream(detail = false): Stream {
   const [connection, setConnection] = useState<ConnectionState>('connecting');
   const [vitals, setVitals] = useState<Vitals | null>(null);
   const [tribes, setTribes] = useState<TribeRow[]>([]);
   const [events, setEvents] = useState<WorldEvent[]>([]);
   const [worldVersion, setWorldVersion] = useState(0);
   const world = useRef<WorldState | null>(null);
+  const agentHistory = useRef<AgentFrame[]>([]);
 
   const bump = useCallback(() => setWorldVersion((v) => v + 1), []);
 
@@ -54,7 +72,7 @@ export function useSimStream(): Stream {
     const connect = () => {
       if (closed) return;
       setConnection((c) => (c === 'live' ? c : 'connecting'));
-      source = new EventSource('/api/stream');
+      source = new EventSource(detail ? '/api/stream?detail=1' : '/api/stream');
 
       source.addEventListener('init', (ev) => {
         const data = JSON.parse((ev as MessageEvent).data);
@@ -64,7 +82,11 @@ export function useSimStream(): Stream {
           tiles: b64ToBytes(data.terrain.tiles),
           owner: b64ToInt16(data.terrain.owner),
           agents: b64ToInt16(data.agents),
+          food: data.food ? b64ToBytes(data.food) : null,
         };
+        agentHistory.current = data.agentsDetail
+          ? [toAgentFrame(data.vitals.tick, b64ToInt32(data.agentsDetail))]
+          : [];
         setVitals(data.vitals);
         setTribes(data.tribes);
         setEvents(data.events.slice(-EVENT_LIMIT));
@@ -83,6 +105,13 @@ export function useSimStream(): Stream {
             w.owner[d[k]] = d[k + 2];
           }
           w.agents = b64ToInt16(data.agents);
+          if (data.food) w.food = b64ToBytes(data.food);
+          if (data.agentsDetail) {
+            agentHistory.current = [
+              ...agentHistory.current,
+              toAgentFrame(data.tick, b64ToInt32(data.agentsDetail)),
+            ].slice(-TRAIL_FRAMES);
+          }
           bump();
         }
         setVitals(data.vitals);
@@ -96,6 +125,7 @@ export function useSimStream(): Stream {
       source.addEventListener('reset', () => {
         source?.close();
         world.current = null;
+        agentHistory.current = [];
         connect();
       });
 
@@ -114,7 +144,7 @@ export function useSimStream(): Stream {
       if (retry) window.clearTimeout(retry);
       source?.close();
     };
-  }, [bump]);
+  }, [bump, detail]);
 
-  return { connection, vitals, tribes, events, world, worldVersion };
+  return { connection, vitals, tribes, events, world, worldVersion, agentHistory };
 }

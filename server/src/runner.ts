@@ -2,7 +2,7 @@ import { Simulation } from './engine/simulation.js';
 import { SnapshotStore } from './engine/snapshot.js';
 import { StreamHub } from './stream/hub.js';
 import { config } from './config.js';
-import { BIOME_NAMES } from './engine/types.js';
+import { AGENT_STATE_LIST, BIOME_NAMES } from './engine/types.js';
 
 /**
  * Owns the tick loop, persistence cadence and client fan-out.
@@ -18,6 +18,7 @@ export class Runner {
   private timer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private lastBroadcast = 0;
+  private overlayCounter = 0;
   private stopping = false;
 
   constructor(sim: Simulation, store: SnapshotStore) {
@@ -101,24 +102,40 @@ export class Runner {
     const vitals = this.sim.vitals();
     const tribes = this.sim.tribeSummaries();
     const agents = this.sim.agentPayload();
+    // Built at most once per frame, and only when a map view is attached.
+    const agentsDetail = this.hub.wantsDetail ? this.sim.agentDetailPayload() : null;
+    // Slow cadence: the overlay is a whole-grid array, not a diff.
+    this.overlayCounter++;
+    const food = this.hub.wantsDetail && this.overlayCounter % 8 === 0
+      ? this.sim.foodOverlayPayload()
+      : null;
 
     this.hub.broadcast('frame', (clientId) => {
       const { seq, events } = this.sim.eventsSince(this.hub.eventSeqOf(clientId));
       this.hub.setEventSeq(clientId, seq);
-      return { tick: this.sim.tick, vitals, tribes, agents, tiles, events, seq };
+      const frame: Record<string, unknown> = {
+        tick: this.sim.tick, vitals, tribes, agents, tiles, events, seq,
+      };
+      if (agentsDetail && this.hub.isDetail(clientId)) frame.agentsDetail = agentsDetail;
+      if (food && this.hub.isDetail(clientId)) frame.food = food;
+      return frame;
     });
   }
 
   /** Full state for a newly connected client. */
-  initPayload() {
+  initPayload(detail = false) {
     return {
       terrain: this.sim.terrainPayload(),
       vitals: this.sim.vitals(),
       tribes: this.sim.tribeSummaries(),
       agents: this.sim.agentPayload(),
+      ...(detail
+        ? { agentsDetail: this.sim.agentDetailPayload(), food: this.sim.foodOverlayPayload() }
+        : {}),
       events: this.sim.events.slice(-200),
       seq: this.sim.currentEventSeq,
       biomes: BIOME_NAMES,
+      states: AGENT_STATE_LIST,
     };
   }
 

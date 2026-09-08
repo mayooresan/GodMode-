@@ -110,8 +110,10 @@ export async function registerRoutes(app: FastifyInstance, runner: Runner): Prom
       // Tell nginx not to buffer the stream if one is in front of us.
       'X-Accel-Buffering': 'no',
     });
-    const clientId = runner.hub.add(reply, runner.sim.currentEventSeq);
-    runner.hub.sendTo(clientId, 'init', runner.initPayload());
+    // The map view opts in to agent ids, states and targets with ?detail=1.
+    const detail = String((req.query as Record<string, unknown>)?.detail ?? '') === '1';
+    const clientId = runner.hub.add(reply, runner.sim.currentEventSeq, detail);
+    runner.hub.sendTo(clientId, 'init', runner.initPayload(detail));
     req.raw.on('close', () => runner.hub.remove(clientId));
     // Keep the request open; Fastify must not send its own response.
     return reply;

@@ -5,6 +5,8 @@ interface Client {
   reply: FastifyReply;
   /** Last world-event sequence this client has seen. */
   eventSeq: number;
+  /** True for the map view, which needs agent ids, states and targets. */
+  detail: boolean;
 }
 
 /**
@@ -22,15 +24,25 @@ export class StreamHub {
     return this.clients.size;
   }
 
-  add(reply: FastifyReply, eventSeq: number): number {
+  add(reply: FastifyReply, eventSeq: number, detail = false): number {
     const id = this.nextId++;
-    this.clients.set(id, { id, reply, eventSeq });
+    this.clients.set(id, { id, reply, eventSeq, detail });
     reply.raw.on('close', () => this.remove(id));
     return id;
   }
 
   remove(id: number): void {
     this.clients.delete(id);
+  }
+
+  /** Whether any connected client asked for the detailed agent payload. */
+  get wantsDetail(): boolean {
+    for (const c of this.clients.values()) if (c.detail) return true;
+    return false;
+  }
+
+  isDetail(id: number): boolean {
+    return this.clients.get(id)?.detail ?? false;
   }
 
   eventSeqOf(id: number): number {

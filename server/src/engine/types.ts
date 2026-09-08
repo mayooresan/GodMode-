@@ -69,6 +69,21 @@ export const AgentState = {
 export type AgentStateId = (typeof AgentState)[keyof typeof AgentState];
 
 /**
+ * Wire ordering for agent states.
+ *
+ * Explicit rather than derived from the AgentState object, because the map
+ * view transmits a state as its index here — reordering this array silently
+ * relabels every agent on the client.
+ */
+export const AGENT_STATE_LIST = [
+  'seek_water', 'forage', 'hunt', 'fish', 'seek_shelter', 'deposit', 'craft',
+  'build', 'reproduce', 'socialize', 'explore', 'fight', 'rest',
+] as const;
+
+export const AGENT_STATE_INDEX: Record<string, number> =
+  Object.fromEntries(AGENT_STATE_LIST.map((s, i) => [s, i]));
+
+/**
  * Fixed occupation buckets for the dashboard's distribution bar.
  *
  * Six categories, not twelve: the bar is a categorical encoding and six is the

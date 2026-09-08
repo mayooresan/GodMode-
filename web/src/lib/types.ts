@@ -87,6 +87,36 @@ export interface TileInfo {
   agents: number;
 }
 
+/** Wire order for agent states; index into this is what the stream sends. */
+export const AGENT_STATES = [
+  'seek_water', 'forage', 'hunt', 'fish', 'seek_shelter', 'deposit', 'craft',
+  'build', 'reproduce', 'socialize', 'explore', 'fight', 'rest',
+] as const;
+
+export const STATE_LABEL: Record<string, string> = {
+  seek_water: 'Seeking water',
+  forage: 'Foraging',
+  hunt: 'Hunting',
+  fish: 'Fishing',
+  seek_shelter: 'Seeking shelter',
+  deposit: 'Hauling to camp',
+  craft: 'Crafting tools',
+  build: 'Building',
+  reproduce: 'Courting',
+  socialize: 'Socialising',
+  explore: 'Exploring',
+  fight: 'Fighting',
+  rest: 'Resting',
+};
+
+/** One frame of agent detail, kept in a short history to draw movement trails. */
+export interface AgentFrame {
+  tick: number;
+  /** agent id -> packed offset into `data` (stride 7). */
+  index: Map<number, number>;
+  data: Int32Array;
+}
+
 /** Live world state assembled from the `init` frame plus streamed diffs. */
 export interface WorldState {
   width: number;
@@ -96,6 +126,8 @@ export interface WorldState {
   owner: Int16Array;
   /** Packed Int16 triples of (x, y, tribeId). */
   agents: Int16Array;
+  /** Food saturation 0-255 per tile; only present on the detailed stream. */
+  food: Uint8Array | null;
 }
 
 export const BIOME_LABEL = [

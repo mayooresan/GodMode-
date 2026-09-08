@@ -179,6 +179,33 @@ screen at once.
   click-to-locate coordinates.
 - **God console** — every intervention below, targeted by clicking the map.
 
+### Tactical map (`#/map`)
+
+A second, full-screen view for watching people rather than statistics — reached
+from the **⛶ Tactical map** button in the dashboard header.
+
+- **Zoom and pan** — scroll to zoom at the cursor, drag to pan, `+` / `-` to
+  zoom, `f` to re-frame the world. Ranges from the whole world in view to 40
+  pixels per tile, where individual people are plainly visible.
+- **Movement trails** — each person's recent positions are stitched together by
+  id and drawn as a fading tail, so you can see foragers streaming toward a
+  river or a war band converging on a camp. Toggle with `t`.
+- **Heading ticks** — past ~8 px/tile each person shows a short line toward
+  wherever they are currently walking.
+- **Tile grid** — appears past 9 px/tile, so god actions can be aimed exactly.
+- **Overlays** — *Terrain* (biomes with a light territorial wash), *Territory*
+  (claims at full strength) and *Forage* (food saturation), which is the one to
+  use when deciding where a blessing or a curse would actually land.
+- **Hover readout** — biome, forage level, owning tribe, and how many people are
+  on the tile and what they are each doing.
+- **Docked god console** — the same console as the dashboard, targeted by
+  clicking a tile; the selection ring previews the action radius before you fire.
+
+The map opts into a heavier stream (`/api/stream?detail=1`) carrying agent ids,
+states and targets plus the forage overlay. The dashboard never requests it, and
+the server only builds that payload when a map view is actually attached — so
+running a wall-mounted dashboard costs nothing extra.
+
 ### A note on the colours
 
 Tribe identity is a categorical colour encoding on a dark surface, so the
@@ -205,6 +232,7 @@ is never recycled onto a different tribe.
 | `GET` | `/api/health` | liveness, tick, population, connected clients |
 | `GET` | `/api/state` | full bootstrap payload (terrain, vitals, tribes, events) |
 | `GET` | `/api/stream` | **SSE**: `init` once, then a `frame` per tick |
+| `GET` | `/api/stream?detail=1` | as above plus agent ids/states/targets and the forage overlay |
 | `GET` | `/api/vitals` | global vitals |
 | `GET` | `/api/tribes` | tribal breakdown rows |
 | `GET` | `/api/events?limit=` | recent world events |

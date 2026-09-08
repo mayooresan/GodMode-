@@ -1,28 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TribeRow, WorldState } from '../lib/types';
 import { BIOME_LABEL } from '../lib/types';
-
-/**
- * Terrain base colours.
- *
- * Deliberately low-chroma: terrain is the ground layer, and the tribal colours
- * painted on top are the data. A saturated basemap would compete with them.
- */
-const TERRAIN: Array<[number, number, number]> = [
-  [16, 32, 56],   // deep water
-  [38, 78, 112],  // river / shallow
-  [72, 84, 52],   // plains
-  [42, 68, 44],   // forest
-  [88, 82, 66],   // hills
-  [116, 112, 106],// mountain
-  [122, 106, 74], // barren / desert
-];
-
-const hexToRgb = (hex: string): [number, number, number] => [
-  parseInt(hex.slice(1, 3), 16),
-  parseInt(hex.slice(3, 5), 16),
-  parseInt(hex.slice(5, 7), 16),
-];
+import { TERRAIN, hexToRgb } from '../lib/palette';
 
 interface Props {
   world: React.MutableRefObject<WorldState | null>;

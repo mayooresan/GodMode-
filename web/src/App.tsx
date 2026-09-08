@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import EventLog from './components/EventLog';
 import GodConsole from './components/GodConsole';
 import TilePanel from './components/TilePanel';
 import TribeTable from './components/TribeTable';
+import MapPage from './components/MapPage';
 import WorldMap from './components/WorldMap';
 import VitalsCard from './components/VitalsCard';
 import { useSimStream } from './lib/useSimStream';
@@ -13,13 +14,45 @@ const CONNECTION_TONE = {
   offline: { dot: 'bg-critical', label: 'offline' },
 } as const;
 
+/**
+ * Hash routing rather than a router dependency: two views, and the hash keeps
+ * deep links working against the server's SPA fallback with no extra config.
+ */
+function useHashRoute(): string {
+  const [route, setRoute] = useState(() => window.location.hash.replace(/^#\/?/, ''));
+  useEffect(() => {
+    const onHash = () => setRoute(window.location.hash.replace(/^#\/?/, ''));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return route;
+}
+
 export default function App() {
-  const { connection, vitals, tribes, events, world, worldVersion } = useSimStream();
+  const route = useHashRoute();
+  const isMap = route === 'map';
+  // The map view opts into the heavier stream: agent ids, states, targets and
+  // the forage overlay. The dashboard never pays for them.
+  const { connection, vitals, tribes, events, world, worldVersion, agentHistory } =
+    useSimStream(isMap);
   const [selected, setSelected] = useState<{ x: number; y: number } | null>(null);
   const [radius, setRadius] = useState(4);
   const [focusTribeId, setFocusTribeId] = useState<number | null>(null);
 
   const conn = CONNECTION_TONE[connection];
+
+  if (isMap) {
+    return (
+      <MapPage
+        world={world}
+        agentHistory={agentHistory}
+        worldVersion={worldVersion}
+        tribes={tribes}
+        vitals={vitals}
+        connection={connection}
+      />
+    );
+  }
 
   return (
     /*
@@ -41,7 +74,13 @@ export default function App() {
               </span>
             )}
           </div>
-          <span className="flex items-center gap-2 text-[11px] text-ink-secondary">
+          <span className="flex items-center gap-3 text-[11px] text-ink-secondary">
+            <a
+              href="#/map"
+              className="rounded border border-divine/60 bg-divine/10 px-2 py-1 text-divine transition-colors hover:bg-divine/20"
+            >
+              ⛶ Tactical map
+            </a>
             <span className={`h-2 w-2 rounded-full ${conn.dot}`} />
             {conn.label}
             {vitals?.paused && <span className="ml-2 text-divine">— time halted</span>}

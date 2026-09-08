@@ -1,6 +1,6 @@
 import {
-  Agent, AgentState, Biome, OCCUPATIONS, OCCUPATION_OF_STATE, Relation, TECHS,
-  TECH_META, Tribe, Vitals, WorldEvent,
+  Agent, AgentState, AGENT_STATE_INDEX, Biome, OCCUPATIONS, OCCUPATION_OF_STATE,
+  Relation, TECHS, TECH_META, Tribe, Vitals, WorldEvent,
 } from './types.js';
 import { World, generateWorld } from './world.js';
 import { Rng } from './rng.js';
@@ -780,6 +780,51 @@ export class Simulation {
       buf[k * 3 + 2] = live[k].tribeId;
     }
     return Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength).toString('base64');
+  }
+
+  /**
+   * Rich per-agent payload for the map view: Int32 stride 7 —
+   * `(id, x, y, tribeId, stateIndex, targetX, targetY)`, target `-1` when the
+   * agent is acting in place.
+   *
+   * Ids are what let the client stitch positions together across frames into
+   * movement trails; the lean `agentPayload` omits them because the dashboard
+   * only ever draws the current instant. This is opt-in per client so a
+   * fast-forwarded world with several dashboard viewers does not pay for it.
+   */
+  agentDetailPayload(): string {
+    const live = this.agents.filter((a) => a.alive);
+    const buf = new Int32Array(live.length * 7);
+    for (let k = 0; k < live.length; k++) {
+      const a = live[k];
+      const o = k * 7;
+      buf[o] = a.id;
+      buf[o + 1] = a.x;
+      buf[o + 2] = a.y;
+      buf[o + 3] = a.tribeId;
+      buf[o + 4] = AGENT_STATE_INDEX[a.state] ?? 0;
+      buf[o + 5] = a.tx ?? -1;
+      buf[o + 6] = a.ty ?? -1;
+    }
+    return Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength).toString('base64');
+  }
+
+  /**
+   * Food saturation per tile, quantised to 0-255 of that tile's capacity.
+   *
+   * Deliberately NOT part of the dirty-tile diff: regeneration touches every
+   * tile every tick, so routing this through the diff would send the whole
+   * grid each frame. The map view takes it on a slow cadence instead, which is
+   * ample for spotting a drought or picking somewhere worth blessing.
+   */
+  foodOverlayPayload(): string {
+    const w = this.world;
+    const out = new Uint8Array(w.size);
+    for (let i = 0; i < w.size; i++) {
+      const cap = w.foodCap[i];
+      out[i] = cap <= 0 ? 0 : Math.max(0, Math.min(255, Math.round((w.food[i] / cap) * 255)));
+    }
+    return Buffer.from(out).toString('base64');
   }
 
   /** Changed tiles since the last flush, as [index, renderByte, owner] triples. */
