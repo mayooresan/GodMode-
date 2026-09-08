@@ -12,7 +12,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "bench": "tsx src/bench.ts",
-    "terrain": "tsx src/terrain-check.ts"
+    "terrain": "tsx src/terrain-check.ts",
+    "check:knowledge": "tsx src/knowledge-check.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

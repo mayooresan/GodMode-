@@ -117,6 +117,24 @@ export interface AgentFrame {
   data: Int32Array;
 }
 
+/** A tribe that no longer exists, from /api/tribes. */
+export interface FallenTribe {
+  id: number;
+  name: string;
+  totem: string;
+  glyph: string;
+  color: string;
+  foundedYear: number;
+  extinctYear: number;
+  lifespanYears: number;
+  births: number;
+  deaths: number;
+  kills: number;
+  techs: string[];
+  fate: string;
+  conqueror: string | null;
+}
+
 /** Live world state assembled from the `init` frame plus streamed diffs. */
 export interface WorldState {
   width: number;

@@ -757,6 +757,41 @@ export class Simulation {
     return rows.sort((a, b) => b.population - a.population);
   }
 
+  /**
+   * Chronicle of tribes that no longer exist.
+   *
+   * `overlordId` distinguishes the two ways a people ends: absorbed by a
+   * conqueror, or simply dying out. Retained for the last 80 tribes.
+   */
+  fallenTribes() {
+    return this.retiredTribes
+      .map((t) => {
+        const conqueror = t.overlordId !== null ? this.tribes.get(t.overlordId) : null;
+        return {
+          id: t.id,
+          name: t.name,
+          totem: t.totem,
+          glyph: t.glyph,
+          color: t.color,
+          foundedTick: t.foundedTick,
+          extinctTick: t.extinctTick ?? this.tick,
+          foundedYear: Math.floor(t.foundedTick / TICKS_PER_YEAR),
+          extinctYear: Math.floor((t.extinctTick ?? this.tick) / TICKS_PER_YEAR),
+          lifespanYears: Math.max(
+            0,
+            Math.round(((t.extinctTick ?? this.tick) - t.foundedTick) / TICKS_PER_YEAR),
+          ),
+          births: t.births,
+          deaths: t.deaths,
+          kills: t.kills,
+          techs: TECHS.filter((k) => t.knowledge.unlocked[k]).map((k) => TECH_META[k].label),
+          fate: t.overlordId !== null ? 'subjugated' : 'died out',
+          conqueror: conqueror ? conqueror.name : null,
+        };
+      })
+      .sort((a, b) => b.extinctTick - a.extinctTick);
+  }
+
   /** Full terrain + ownership payload, sent once when a client connects. */
   terrainPayload() {
     const bytes = new Uint8Array(this.world.size);

@@ -4,6 +4,7 @@ import GodConsole from './components/GodConsole';
 import TilePanel from './components/TilePanel';
 import TribeTable from './components/TribeTable';
 import MapPage from './components/MapPage';
+import TribesPage from './components/TribesPage';
 import WorldMap from './components/WorldMap';
 import VitalsCard from './components/VitalsCard';
 import { useSimStream } from './lib/useSimStream';
@@ -41,6 +42,10 @@ export default function App() {
 
   const conn = CONNECTION_TONE[connection];
 
+  if (route === 'tribes') {
+    return <TribesPage tribes={tribes} vitals={vitals} connection={connection} />;
+  }
+
   if (isMap) {
     return (
       <MapPage
@@ -75,6 +80,12 @@ export default function App() {
             )}
           </div>
           <span className="flex items-center gap-3 text-[11px] text-ink-secondary">
+            <a
+              href="#/tribes"
+              className="rounded border border-edge bg-surface-2 px-2 py-1 text-ink-secondary transition-colors hover:border-ink-muted hover:text-ink-primary"
+            >
+              ▦ Tribal stats
+            </a>
             <a
               href="#/map"
               className="rounded border border-divine/60 bg-divine/10 px-2 py-1 text-divine transition-colors hover:bg-divine/20"

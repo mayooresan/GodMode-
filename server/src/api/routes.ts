@@ -58,7 +58,10 @@ export async function registerRoutes(app: FastifyInstance, runner: Runner): Prom
 
   app.get('/api/world/terrain', async () => runner.sim.terrainPayload());
 
-  app.get('/api/tribes', async () => ({ tribes: runner.sim.tribeSummaries() }));
+  app.get('/api/tribes', async () => ({
+    tribes: runner.sim.tribeSummaries(),
+    fallen: runner.sim.fallenTribes(),
+  }));
 
   app.get('/api/vitals', async () => runner.sim.vitals());
 

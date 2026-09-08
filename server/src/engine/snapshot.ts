@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Simulation, SimOptions } from './simulation.js';
 import { World } from './world.js';
+import { normaliseKnowledge } from './tribes.js';
 import type { Agent, Tribe } from './types.js';
 
 /**
@@ -43,6 +44,8 @@ interface SnapshotDoc {
   warCooldown: Array<[string, number]>;
   world: Record<string, string | number>;
   tribes: Array<Omit<Tribe, 'territory'> & { territory: number[] }>;
+  /** Added after v3 shipped; absent in older snapshots, hence optional. */
+  retiredTribes?: Array<Omit<Tribe, 'territory'> & { territory: number[] }>;
   agents: Agent[];
   events: unknown[];
 }
@@ -80,6 +83,7 @@ export function serialize(sim: Simulation): SnapshotDoc {
       cursed: b64(w.cursed),
     },
     tribes: [...sim.tribes.values()].map((t) => ({ ...t, territory: [...t.territory] })),
+    retiredTribes: sim.retiredTribes.map((t) => ({ ...t, territory: [] })),
     agents: sim.agents.filter((a) => a.alive),
     events: sim.events,
   };
@@ -119,8 +123,17 @@ export function deserialize(doc: SnapshotDoc): Simulation {
 
   for (const t of doc.tribes) {
     const tribe: Tribe = { ...t, territory: new Set(t.territory) } as Tribe;
+    // Repair worlds snapshotted before the unlocked/progress invariant was
+    // enforced, so an existing save is corrected rather than carried forward.
+    normaliseKnowledge(tribe);
     sim.tribes.set(tribe.id, tribe);
   }
+  // Deliberately tolerant: snapshots written before this field existed simply
+  // resume with an empty chronicle rather than being rejected as incompatible.
+  sim.retiredTribes = (doc.retiredTribes ?? []).map(
+    (t) => ({ ...t, territory: new Set<number>() } as Tribe),
+  );
+
   for (const a of doc.agents) sim.addAgent(a);
   return sim;
 }

@@ -148,6 +148,12 @@ export default function MapPage({
         >
           ← Dashboard
         </a>
+        <a
+          href="#/tribes"
+          className="rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-ink-secondary hover:border-ink-muted hover:text-ink-primary"
+        >
+          ▦ Tribal stats
+        </a>
         <h1 className="text-sm font-semibold">Tactical Map</h1>
         {vitals && (
           <span className="font-mono text-[11px] text-ink-muted">

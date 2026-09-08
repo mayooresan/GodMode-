@@ -206,6 +206,29 @@ states and targets plus the forage overlay. The dashboard never requests it, and
 the server only builds that payload when a map view is actually attached — so
 running a wall-mounted dashboard costs nothing extra.
 
+### Tribal statistics (`#/tribes`)
+
+Every figure the engine holds about every tribe, in one sortable table.
+
+- **22 sortable columns** — population and its age structure, territory, food
+  store, tools, technologies, morale, aggression, hardship, cumulative births
+  and deaths, net growth, war kills, active wars and trade pacts, camp
+  coordinates and live occupation mix. Click any header to sort; click again to
+  reverse.
+- **Derived per-head figures** are first-class: comparing tribes of different
+  sizes by absolute food is misleading, and *food per head* is the number that
+  actually predicts a famine.
+- **Magnitude bars** behind population, territory and food, scaled to the
+  current leader, so the pecking order reads without comparing digits.
+- **Totals row** across whatever the filter currently shows.
+- **Expandable rows** with research progress, the full occupation breakdown and
+  named diplomatic relations.
+- **CSV export** of the current sort and filter, for taking a run's numbers
+  elsewhere.
+- **Fallen tribes** — a chronicle of the last 80 peoples that ended, each with
+  its founding and final year, lifespan, whether it died out or was subjugated
+  and by whom. This survives restarts.
+
 ### A note on the colours
 
 Tribe identity is a categorical colour encoding on a dark surface, so the
@@ -234,7 +257,7 @@ is never recycled onto a different tribe.
 | `GET` | `/api/stream` | **SSE**: `init` once, then a `frame` per tick |
 | `GET` | `/api/stream?detail=1` | as above plus agent ids/states/targets and the forage overlay |
 | `GET` | `/api/vitals` | global vitals |
-| `GET` | `/api/tribes` | tribal breakdown rows |
+| `GET` | `/api/tribes` | tribal breakdown rows, plus the `fallen` chronicle |
 | `GET` | `/api/events?limit=` | recent world events |
 | `GET` | `/api/tile?x=&y=` | full detail for one tile |
 | `GET` | `/api/world/terrain` | base64 terrain + ownership arrays |

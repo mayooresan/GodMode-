@@ -6,6 +6,25 @@ import { isAdult, isElder, mixTraits, createAgent, findNearest } from './agents.
 import { MAX_TRIBES, makeIdentity, placeName } from './names.js';
 import type { Simulation } from './simulation.js';
 
+/**
+ * Enforce the invariant that an unlocked technology is fully researched.
+ *
+ * Inheritance paths (fission, subjugation) copy the `unlocked` flag across but
+ * scale `progress` down, which left tribes that genuinely know a technique
+ * rendering as "known, 60%" — and would let a later recount treat it as still
+ * in progress. Knowledge you have is knowledge you have.
+ */
+export function normaliseKnowledge(tribe: Tribe): void {
+  for (const t of TECHS) {
+    if (tribe.knowledge.unlocked[t]) {
+      tribe.knowledge.progress[t] = Math.max(
+        tribe.knowledge.progress[t],
+        TECH_META[t].cost,
+      );
+    }
+  }
+}
+
 export function emptyKnowledge(): Tribe['knowledge'] {
   const progress = {} as Record<TechId, number>;
   const unlocked = {} as Record<TechId, boolean>;
@@ -280,6 +299,7 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
       // rediscover it, which is what keeps tech levels uneven across the map.
       daughter.knowledge.unlocked[t] = tribe.knowledge.unlocked[t] && sim.rng.chance(0.7);
     }
+    normaliseKnowledge(daughter);
     daughter.foodStore = tribe.foodStore * 0.3;
     tribe.foodStore *= 0.7;
     daughter.relations[tribe.id] = Relation.Trade;
@@ -442,6 +462,7 @@ export function subjugate(sim: Simulation, victor: Tribe, loser: Tribe): void {
     );
     victor.knowledge.unlocked[t] = victor.knowledge.unlocked[t] || loser.knowledge.unlocked[t];
   }
+  normaliseKnowledge(victor);
   loser.extinctTick = sim.tick;
   loser.overlordId = victor.id;
   sim.log({
