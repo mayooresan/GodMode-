@@ -1,0 +1,63 @@
+services:
+  civ-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: civ-engine:latest
+    container_name: civ-engine
+    # Survive droplet reboots and engine crashes without any supervisor.
+    restart: unless-stopped
+
+    # Bind the published port to the interface you want. Default exposes the
+    # dashboard on all interfaces; change to "127.0.0.1:8080:8080" when you
+    # front it with nginx/Caddy for TLS.
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:${HOST_PORT:-8080}:8080"
+
+    environment:
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+
+      # --- world generation (only used when there is no snapshot to resume) ---
+      WORLD_WIDTH: "${WORLD_WIDTH:-128}"
+      WORLD_HEIGHT: "${WORLD_HEIGHT:-128}"
+      WORLD_SEED: "${WORLD_SEED:-20260908}"
+      STARTING_TRIBES: "${STARTING_TRIBES:-6}"
+      STARTING_AGENTS: "${STARTING_AGENTS:-12}"
+      MAX_AGENTS: "${MAX_AGENTS:-6000}"
+
+      # --- runtime ---
+      TICK_MS: "${TICK_MS:-1000}"
+      SNAPSHOT_EVERY_TICKS: "${SNAPSHOT_EVERY_TICKS:-60}"
+      RESUME: "${RESUME:-true}"
+      EVENT_LOG_SIZE: "${EVENT_LOG_SIZE:-600}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+
+      # --- access control ---
+      # Leave empty and every visitor can invoke god powers. Set it on any
+      # host reachable from the internet.
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
+      CORS_ORIGIN: "${CORS_ORIGIN:-*}"
+
+    volumes:
+      # World snapshots live here and survive `docker compose down`.
+      - civ-data:/data
+
+    # A 1 vCPU / 1 GB droplet runs a 128x128 world comfortably; these caps stop
+    # a fast-forwarded simulation from starving everything else on the box.
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT:-1.0}"
+          memory: ${MEMORY_LIMIT:-900M}
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  civ-data:
+    driver: local
