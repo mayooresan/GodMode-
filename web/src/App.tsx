@@ -3,6 +3,7 @@ import EventLog from './components/EventLog';
 import GodConsole from './components/GodConsole';
 import TilePanel from './components/TilePanel';
 import TribeTable from './components/TribeTable';
+import HistoryPage from './components/HistoryPage';
 import MapPage from './components/MapPage';
 import TribesPage from './components/TribesPage';
 import WorldMap from './components/WorldMap';
@@ -34,13 +35,17 @@ export default function App() {
   const isMap = route === 'map';
   // The map view opts into the heavier stream: agent ids, states, targets and
   // the forage overlay. The dashboard never pays for them.
-  const { connection, vitals, tribes, events, world, worldVersion, agentHistory } =
+  const { connection, vitals, tribes, events, world, worldVersion, agentHistory, states } =
     useSimStream(isMap);
   const [selected, setSelected] = useState<{ x: number; y: number } | null>(null);
   const [radius, setRadius] = useState(4);
   const [focusTribeId, setFocusTribeId] = useState<number | null>(null);
 
   const conn = CONNECTION_TONE[connection];
+
+  if (route === 'history') {
+    return <HistoryPage vitals={vitals} connection={connection} />;
+  }
 
   if (route === 'tribes') {
     return <TribesPage tribes={tribes} vitals={vitals} connection={connection} />;
@@ -55,6 +60,7 @@ export default function App() {
         tribes={tribes}
         vitals={vitals}
         connection={connection}
+        states={states}
       />
     );
   }
@@ -80,6 +86,12 @@ export default function App() {
             )}
           </div>
           <span className="flex items-center gap-3 text-[11px] text-ink-secondary">
+            <a
+              href="#/history"
+              className="rounded border border-edge bg-surface-2 px-2 py-1 text-ink-secondary transition-colors hover:border-ink-muted hover:text-ink-primary"
+            >
+              ◷ History
+            </a>
             <a
               href="#/tribes"
               className="rounded border border-edge bg-surface-2 px-2 py-1 text-ink-secondary transition-colors hover:border-ink-muted hover:text-ink-primary"

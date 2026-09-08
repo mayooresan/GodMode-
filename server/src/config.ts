@@ -31,6 +31,11 @@ export const config = {
   /** Ring-buffer size for the world event log. */
   eventLogSize: num(process.env.EVENT_LOG_SIZE, 600),
 
+  /** Ticks between history samples, and how many samples to retain. */
+  historyStride: num(process.env.HISTORY_STRIDE, 8),
+  historyMaxSamples: num(process.env.HISTORY_MAX_SAMPLES, 1200),
+  historyMaxTribeSeries: num(process.env.HISTORY_MAX_TRIBE_SERIES, 40),
+
   /** Optional shared secret required on god-intervention endpoints. */
   adminToken: process.env.ADMIN_TOKEN ?? '',
 

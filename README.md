@@ -229,6 +229,27 @@ Every figure the engine holds about every tribe, in one sortable table.
   its founding and final year, lifespan, whether it died out or was subjugated
   and by whom. This survives restarts.
 
+### History (`#/history`)
+
+The world's memory. Aggregates are sampled on a stride and kept in columnar
+arrays, so you can ask when the population peaked, whether a drought actually
+hurt, or which tribe was ascendant two centuries ago.
+
+- **Population by age** as a stacked area — the shape of the age pyramid over time
+- **Births and deaths** per sample; the crossing is the turn from growth to decline
+- **Tribes alive and wars under way** — fission raises the count, conquest lowers it
+- **Territory, communal food, temperature and technologies known**
+- **Rise and fall of every tribe** — one line per people, in its own colour.
+  Series for extinct tribes are kept and marked †; their arc is the most
+  interesting part of the record.
+
+A single crosshair tracks the same instant across every chart at once, with one
+shared readout, which is what makes cause and effect legible — a temperature
+trough lining up with a food collapse and a death spike.
+
+History survives restarts, and older samples are dropped once the buffer is
+full (1,200 samples by default, one per 8 ticks — roughly 100 simulated years).
+
 ### A note on the colours
 
 Tribe identity is a categorical colour encoding on a dark surface, so the
@@ -257,6 +278,7 @@ is never recycled onto a different tribe.
 | `GET` | `/api/stream` | **SSE**: `init` once, then a `frame` per tick |
 | `GET` | `/api/stream?detail=1` | as above plus agent ids/states/targets and the forage overlay |
 | `GET` | `/api/vitals` | global vitals |
+| `GET` | `/api/history?limit=` | recorded aggregates over time, columnar |
 | `GET` | `/api/tribes` | tribal breakdown rows, plus the `fallen` chronicle |
 | `GET` | `/api/events?limit=` | recent world events |
 | `GET` | `/api/tile?x=&y=` | full detail for one tile |
@@ -296,6 +318,29 @@ curl -X POST http://localhost:8080/api/god/disaster \
 
 ---
 
+## Checks
+
+```bash
+npm run bench 3000        # throughput and an end-of-run summary
+npm --prefix server run check    # 17 invariant and outcome assertions
+```
+
+`check` runs a seeded world and asserts both the things that must hold at every
+instant — agents inside the world and belonging to a living tribe, tile
+ownership agreeing with tribal territory, no negative stores, unique tribe
+colours, an unlocked technology being fully researched — and the things that
+must be true of a run worth looking at: humanity survives, every biome exists,
+technology advances, people are both born and dying, and no single occupation
+swallows the population.
+
+Every balance bug this project hit was mechanically detectable and was instead
+found by reading bench output and squinting at screenshots. Pass a seed as the
+second argument (`npm --prefix server run check -- 3000 42`) to check that a
+change holds up beyond one lucky world.
+
+Balance constants all live in `server/src/engine/tunables.ts` — a tuning pass is
+a diff against one file rather than a hunt through the behaviour code.
+
 ## Persistence
 
 World state lives in memory for tick throughput and is snapshotted to
@@ -327,6 +372,9 @@ Every value has a working default; see `.env.example`.
 | `ADMIN_TOKEN` | *(empty)* | **required header for `/api/god/*` when set** |
 | `CORS_ORIGIN` | `*` | comma-separated allowed origins |
 | `EVENT_LOG_SIZE` | `600` | event ring-buffer size |
+| `HISTORY_STRIDE` | `8` | ticks between history samples |
+| `HISTORY_MAX_SAMPLES` | `1200` | history samples retained |
+| `HISTORY_MAX_TRIBE_SERIES` | `40` | per-tribe history series retained |
 
 World-generation variables only apply when there is no snapshot to resume (or
 `RESUME=false`) — otherwise the persisted world wins.

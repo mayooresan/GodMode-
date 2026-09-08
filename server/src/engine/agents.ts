@@ -4,13 +4,11 @@ import {
 import { ADULT_AGE, ELDER_AGE, MAX_AGE, TICKS_PER_YEAR } from '../config.js';
 import type { Rng } from './rng.js';
 import type { World } from './world.js';
+import { TUNABLES as T } from './tunables.js';
 import type { Simulation } from './simulation.js';
 
-/** Most an agent will haul before returning to camp. */
-export const CARRY_CAPACITY = 20;
-
-/** Food units per head that a tribe treats as a comfortable reserve. */
-const COMFORTABLE_STORE_PER_HEAD = 14;
+/** Re-exported for callers that reason about how much an agent can carry. */
+export const CARRY_CAPACITY = T.foraging.carryCapacity;
 
 export const yearsOf = (a: Agent) => a.ageTicks / TICKS_PER_YEAR;
 export const isAdult = (a: Agent) => a.ageTicks >= ADULT_AGE * TICKS_PER_YEAR;
@@ -20,8 +18,8 @@ export const isElder = (a: Agent) => a.ageTicks >= ELDER_AGE * TICKS_PER_YEAR;
 export function mixTraits(rng: Rng, a?: Traits, b?: Traits): Traits {
   const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
   const gene = (x?: number, y?: number) => {
-    if (x === undefined || y === undefined) return clamp01(rng.normal(0.5, 0.17));
-    return clamp01((x + y) / 2 + rng.normal(0, 0.07));
+    if (x === undefined || y === undefined) return clamp01(rng.normal(T.genetics.freshMean, T.genetics.freshSpread));
+    return clamp01((x + y) / 2 + rng.normal(0, T.genetics.mutationSpread));
   };
   return {
     aggression: gene(a?.aggression, b?.aggression),
@@ -109,11 +107,11 @@ function stepToward(sim: Simulation, a: Agent, tx: number, ty: number): void {
     const i = w.idx(nx, ny);
     if (!w.isPassable(i)) continue;
     const cost = BIOME_PROFILE[w.biome[i]].moveCost;
-    if (a.stamina < cost * 2) {
+    if (a.stamina < cost * T.movement.staminaSafetyFactor) {
       a.state = AgentState.Rest;
       return;
     }
-    a.stamina -= cost * 1.6;
+    a.stamina -= cost * T.movement.staminaPerStep;
     a.x = nx;
     a.y = ny;
     return;
@@ -148,19 +146,18 @@ function chooseState(sim: Simulation, a: Agent): AgentStateId {
   const tribe = sim.tribes.get(a.tribeId);
   const i = w.idx(a.x, a.y);
 
-  if (a.stamina < 12) return AgentState.Rest;
-  if (a.thirst > 52) return AgentState.SeekWater;
+  if (a.stamina < T.needs.exhaustedStamina) return AgentState.Rest;
+  if (a.thirst > T.needs.thirstSeekThreshold) return AgentState.SeekWater;
 
-  if (a.hunger > 40) return foodState(sim, a);
+  if (a.hunger > T.needs.hungerSeekThreshold) return foodState(sim, a);
 
   if (tribe && sim.warBand.has(a.id)) return AgentState.Fight;
 
   // Cold snap: seek warmth before doing anything discretionary.
-  const warmth = sim.temperature + (w.shelter[i] > 0 ? 12 : 0) +
-    (tribe?.knowledge.unlocked.fire ? 9 : 0) + a.traits.hardiness * 8;
-  if (warmth < 4) return AgentState.SeekShelter;
+  const warmth = warmthAt(sim, a, i, tribe);
+  if (warmth < T.warmth.seekShelterBelow) return AgentState.SeekShelter;
 
-  if (a.carrying >= CARRY_CAPACITY * 0.6) return AgentState.Deposit;
+  if (a.carrying >= CARRY_CAPACITY * T.foraging.depositAtFraction) return AgentState.Deposit;
 
   if (tribe && isAdult(a) && !isElder(a)) {
     // Compare against the cap the tribe can actually reach — palisades need
@@ -169,16 +166,16 @@ function chooseState(sim: Simulation, a: Agent): AgentStateId {
     const shelterCap = tribe.knowledge.unlocked.warfare ? 3 : 2;
     const needsHut =
       tribe.knowledge.unlocked.shelter && w.shelter[w.idx(tribe.cx, tribe.cy)] < shelterCap;
-    if (needsHut && sim.rng.chance(0.25)) return AgentState.Build;
-    if (tribe.knowledge.unlocked.flint && tribe.toolStore < sim.tribePopulation(tribe.id) && sim.rng.chance(0.2)) {
+    if (needsHut && sim.rng.chance(T.work.buildChance)) return AgentState.Build;
+    if (tribe.knowledge.unlocked.flint && tribe.toolStore < sim.tribePopulation(tribe.id) && sim.rng.chance(T.work.craftChance)) {
       return AgentState.Craft;
     }
-    if (tribe.knowledge.unlocked.farming && sim.rng.chance(0.15)) return AgentState.Build;
+    if (tribe.knowledge.unlocked.farming && sim.rng.chance(T.work.cultivateChance)) return AgentState.Build;
     if (
       a.breedCooldown <= 0 &&
-      a.health > 60 &&
-      a.hunger < 40 &&
-      tribe.foodStore > sim.tribePopulation(tribe.id) * 4
+      a.health > T.reproduction.minHealth &&
+      a.hunger < T.reproduction.maxHunger &&
+      tribe.foodStore > sim.tribePopulation(tribe.id) * T.reproduction.storePerHeadRequired
     ) {
       return AgentState.Reproduce;
     }
@@ -194,16 +191,18 @@ function chooseState(sim: Simulation, a: Agent): AgentStateId {
   // falls, and a baseline keeps a few hands working even in plenty.
   if (tribe && a.carrying < CARRY_CAPACITY) {
     const pop = Math.max(1, sim.tribePopulation(tribe.id));
-    const comfort = tribe.foodStore / (pop * COMFORTABLE_STORE_PER_HEAD);
+    const comfort = tribe.foodStore / (pop * T.surplus.comfortableStorePerHead);
     // Drowning in food: all but a token few stop gathering. Without this the
     // baseline urge never relaxes and stores grow without bound, which no
     // Stone Age group could actually hold.
-    const urge = comfort > 2.5 ? 0.05 : Math.min(0.92, Math.max(0.22, 1.05 - comfort));
+    const urge = comfort > T.surplus.abundanceRatio
+      ? T.surplus.abundanceUrge
+      : Math.min(T.surplus.urgeMax, Math.max(T.surplus.urgeMin, T.surplus.urgeBase - comfort));
     if (sim.rng.chance(urge)) return foodState(sim, a);
   }
 
   if (a.carrying > 0) return AgentState.Deposit;
-  return sim.rng.chance(0.4) ? AgentState.Explore : AgentState.Socialize;
+  return sim.rng.chance(T.behaviour.exploreOverSocialise) ? AgentState.Explore : AgentState.Socialize;
 }
 
 /** Pick the gathering method that suits this tile, the tribe's tools and the agent. */
@@ -212,13 +211,30 @@ function foodState(sim: Simulation, a: Agent): AgentStateId {
   const tribe = sim.tribes.get(a.tribeId);
   const i = w.idx(a.x, a.y);
   if (w.biome[i] === Biome.ShallowWater || sim.adjacentWater(a.x, a.y)) {
-    if (tribe?.knowledge.unlocked.flint || sim.rng.chance(0.4)) return AgentState.Fish;
+    if (tribe?.knowledge.unlocked.flint || sim.rng.chance(T.behaviour.opportunisticFishChance)) {
+      return AgentState.Fish;
+    }
   }
   const huntable = w.biome[i] === Biome.Forest || w.biome[i] === Biome.Hills;
-  if (huntable && tribe?.knowledge.unlocked.flint && a.traits.aggression > 0.4) {
+  if (huntable && tribe?.knowledge.unlocked.flint && a.traits.aggression > T.behaviour.hunterAggression) {
     return AgentState.Hunt;
   }
   return AgentState.Forage;
+}
+
+/** Effective warmth for an agent: ambient plus shelter, fire and hardiness. */
+function warmthAt(
+  sim: Simulation,
+  a: Agent,
+  tileIndex: number,
+  tribe: ReturnType<Simulation['tribes']['get']>,
+): number {
+  return (
+    sim.temperature +
+    (sim.world.shelter[tileIndex] > 0 ? T.warmth.shelterBonus : 0) +
+    (tribe?.knowledge.unlocked.fire ? T.warmth.fireBonus : 0) +
+    a.traits.hardiness * T.warmth.hardinessBonus
+  );
 }
 
 /** Advance one agent by a single tick: needs, decision, action, mortality. */
@@ -227,10 +243,10 @@ export function stepAgent(sim: Simulation, a: Agent): void {
   const tribe = sim.tribes.get(a.tribeId);
   a.ageTicks++;
 
-  const hardy = 1 - a.traits.hardiness * 0.35;
-  a.hunger = Math.min(100, a.hunger + 0.78 * hardy * sim.hungerRate);
-  a.thirst = Math.min(100, a.thirst + 1.25 * hardy);
-  a.stamina = Math.min(100, a.stamina + 1.2);
+  const hardy = 1 - a.traits.hardiness * T.needs.hardinessNeedsRelief;
+  a.hunger = Math.min(100, a.hunger + T.needs.hungerPerTick * hardy * sim.hungerRate);
+  a.thirst = Math.min(100, a.thirst + T.needs.thirstPerTick * hardy);
+  a.stamina = Math.min(100, a.stamina + T.needs.staminaRegenPerTick);
   if (a.breedCooldown > 0) a.breedCooldown--;
 
   const desired = chooseState(sim, a);
@@ -241,18 +257,18 @@ export function stepAgent(sim: Simulation, a: Agent): void {
 
   switch (a.state) {
     case AgentState.Rest:
-      a.stamina = Math.min(100, a.stamina + 6);
+      a.stamina = Math.min(100, a.stamina + T.needs.restStaminaRegen);
       break;
 
     case AgentState.SeekWater: {
       const here = w.idx(a.x, a.y);
-      if (w.water[here] > 1) {
-        const drink = Math.min(w.water[here], 45);
+      if (w.water[here] > T.water.minDrinkable) {
+        const drink = Math.min(w.water[here], T.water.drinkAmount);
         w.water[here] -= drink;
-        a.thirst = Math.max(0, a.thirst - drink * 1.6);
+        a.thirst = Math.max(0, a.thirst - drink * T.water.thirstPerUnit);
         clearTarget(a);
       } else {
-        seekTile(sim, a, 14, (i) => w.water[i] > 8);
+        seekTile(sim, a, T.water.seekRadius, (i) => w.water[i] > T.water.minWorthwhile);
       }
       break;
     }
@@ -261,23 +277,25 @@ export function stepAgent(sim: Simulation, a: Agent): void {
     case AgentState.Hunt:
     case AgentState.Fish: {
       const here = w.idx(a.x, a.y);
-      const toolBonus = tribe?.knowledge.unlocked.flint ? 1.55 : 1;
-      const fireBonus = tribe?.knowledge.unlocked.fire ? 1.25 : 1; // cooking yields more calories
-      const stateBonus = a.state === AgentState.Hunt ? 1.6 : a.state === AgentState.Fish ? 1.3 : 1;
+      const toolBonus = tribe?.knowledge.unlocked.flint ? T.foraging.toolYieldBonus : 1;
+      const fireBonus = tribe?.knowledge.unlocked.fire ? T.foraging.cookingCalorieBonus : 1;
+      const stateBonus = a.state === AgentState.Hunt
+        ? T.foraging.huntYieldBonus
+        : a.state === AgentState.Fish ? T.foraging.fishYieldBonus : 1;
       const potential = w.food[here];
-      if (potential > 1.5) {
-        const take = Math.min(potential, 3.4 * toolBonus * stateBonus);
+      if (potential > T.foraging.minTileFood) {
+        const take = Math.min(potential, T.foraging.baseTakePerTick * toolBonus * stateBonus);
         w.food[here] -= take;
         const calories = take * fireBonus;
-        const eaten = Math.min(calories, a.hunger / 3.2);
-        a.hunger = Math.max(0, a.hunger - eaten * 3.2);
+        const eaten = Math.min(calories, a.hunger / T.foraging.caloriesPerHungerPoint);
+        a.hunger = Math.max(0, a.hunger - eaten * T.foraging.caloriesPerHungerPoint);
         a.carrying = Math.min(CARRY_CAPACITY, a.carrying + Math.max(0, calories - eaten));
-        if (a.state === AgentState.Hunt && sim.rng.chance(0.012 * (1 - a.traits.hardiness))) {
-          a.health -= sim.rng.range(8, 30); // gored by the quarry
+        if (a.state === AgentState.Hunt && sim.rng.chance(T.foraging.huntInjuryChance * (1 - a.traits.hardiness))) {
+          a.health -= sim.rng.range(T.foraging.huntInjuryMin, T.foraging.huntInjuryMax); // gored
         }
-        if (w.food[here] < 1.5) clearTarget(a);
+        if (w.food[here] < T.foraging.minTileFood) clearTarget(a);
       } else {
-        seekTile(sim, a, 12, (i) => w.food[i] > 6);
+        seekTile(sim, a, T.foraging.seekRadius, (i) => w.food[i] > T.foraging.minWorthwhile);
       }
       break;
     }
@@ -285,8 +303,8 @@ export function stepAgent(sim: Simulation, a: Agent): void {
     case AgentState.SeekShelter: {
       const here = w.idx(a.x, a.y);
       if (w.shelter[here] > 0) {
-        a.stamina = Math.min(100, a.stamina + 3);
-        a.morale = Math.min(100, a.morale + 0.4);
+        a.stamina = Math.min(100, a.stamina + T.warmth.shelterStaminaRegen);
+        a.morale = Math.min(100, a.morale + T.warmth.shelterMoraleGain);
       } else if (tribe) {
         a.tx = tribe.cx;
         a.ty = tribe.cy;
@@ -300,7 +318,7 @@ export function stepAgent(sim: Simulation, a: Agent): void {
       if (a.x === tribe.cx && a.y === tribe.cy) {
         tribe.foodStore += a.carrying;
         a.carrying = 0;
-        a.morale = Math.min(100, a.morale + 1);
+        a.morale = Math.min(100, a.morale + T.work.depositMoraleGain);
         clearTarget(a);
       } else {
         stepToward(sim, a, tribe.cx, tribe.cy);
@@ -311,15 +329,15 @@ export function stepAgent(sim: Simulation, a: Agent): void {
     case AgentState.Craft: {
       if (!tribe) break;
       const here = w.idx(a.x, a.y);
-      if (w.stone[here] > 4) {
-        w.stone[here] -= 4;
-        tribe.stoneStore += 4;
-        tribe.toolStore += 0.6;
-      } else if (tribe.stoneStore > 6) {
-        tribe.stoneStore -= 6;
-        tribe.toolStore += 1;
+      if (w.stone[here] > T.work.craftStoneCost) {
+        w.stone[here] -= T.work.craftStoneCost;
+        tribe.stoneStore += T.work.craftStoneCost;
+        tribe.toolStore += T.work.craftToolYield;
+      } else if (tribe.stoneStore > T.work.craftFromStoreCost) {
+        tribe.stoneStore -= T.work.craftFromStoreCost;
+        tribe.toolStore += T.work.craftFromStoreYield;
       } else {
-        seekTile(sim, a, 10, (i) => w.stone[i] > 12);
+        seekTile(sim, a, T.work.stoneSeekRadius, (i) => w.stone[i] > T.work.minTileStone);
       }
       break;
     }
@@ -327,26 +345,26 @@ export function stepAgent(sim: Simulation, a: Agent): void {
     case AgentState.Build: {
       if (!tribe) break;
       const here = w.idx(a.x, a.y);
-      if (w.wood[here] > 6) {
-        w.wood[here] -= 6;
-        tribe.woodStore += 6;
+      if (w.wood[here] > T.work.woodHarvest) {
+        w.wood[here] -= T.work.woodHarvest;
+        tribe.woodStore += T.work.woodHarvest;
       }
-      if (tribe.knowledge.unlocked.farming && sim.canCultivate(here) && tribe.woodStore > 10) {
-        tribe.woodStore -= 10;
+      if (tribe.knowledge.unlocked.farming && sim.canCultivate(here) && tribe.woodStore > T.work.cultivateWoodCost) {
+        tribe.woodStore -= T.work.cultivateWoodCost;
         w.cultivated[here] = Math.min(3, w.cultivated[here] + 1);
         w.refreshCaps(here);
         w.markDirty(here);
-      } else if (tribe.knowledge.unlocked.shelter && tribe.woodStore > 24) {
+      } else if (tribe.knowledge.unlocked.shelter && tribe.woodStore > T.work.hutWoodCost) {
         const camp = w.idx(tribe.cx, tribe.cy);
         const cap = tribe.knowledge.unlocked.warfare ? 3 : 2;
         if (w.shelter[camp] < cap) {
-          tribe.woodStore -= 24;
+          tribe.woodStore -= T.work.hutWoodCost;
           w.shelter[camp] = w.shelter[camp] + 1;
           w.refreshCaps(camp);
           w.markDirty(camp);
         }
-      } else if (w.wood[here] <= 6) {
-        seekTile(sim, a, 10, (i) => w.wood[i] > 20);
+      } else if (w.wood[here] <= T.work.woodHarvest) {
+        seekTile(sim, a, T.work.woodSeekRadius, (i) => w.wood[i] > T.work.minTileWood);
       }
       break;
     }
@@ -366,9 +384,9 @@ export function stepAgent(sim: Simulation, a: Agent): void {
     }
 
     case AgentState.Socialize: {
-      a.morale = Math.min(100, a.morale + 0.6);
+      a.morale = Math.min(100, a.morale + T.work.socialiseMoraleGain);
       // Storytelling around the fire; the bulk of research accrues tribe-side.
-      if (tribe) sim.addResearch(tribe, a.traits.inquisitiveness * 0.5);
+      if (tribe) sim.addResearch(tribe, a.traits.inquisitiveness * T.work.socialiseResearch);
       break;
     }
 
@@ -380,7 +398,7 @@ export function stepAgent(sim: Simulation, a: Agent): void {
         // Range around the camp rather than around the agent's current spot.
         // A self-relative random walk lets agents drift out of the tribe's
         // ration radius over time and quietly starve at the map's edge.
-        const r = 14;
+        const r = T.work.exploreRadius;
         const ox = tribe ? tribe.cx : a.x;
         const oy = tribe ? tribe.cy : a.y;
         const nx = w.clampX(ox + sim.rng.int(-r, r));
@@ -424,30 +442,39 @@ function applyMortality(sim: Simulation, a: Agent): void {
   const w = sim.world;
   const i = w.idx(a.x, a.y);
   const tribe = sim.tribes.get(a.tribeId);
-  const hardy = 1 - a.traits.hardiness * 0.5;
+  const hardy = 1 - a.traits.hardiness * T.needs.hardinessDamageRelief;
 
-  if (a.hunger > 82) a.health -= (a.hunger - 82) * 0.22 * hardy;
-  if (a.thirst > 86) a.health -= (a.thirst - 86) * 0.4 * hardy;
+  if (a.hunger > T.mortality.starvationThreshold) {
+    a.health -= (a.hunger - T.mortality.starvationThreshold) * T.mortality.starvationRate * hardy;
+  }
+  if (a.thirst > T.mortality.dehydrationThreshold) {
+    a.health -= (a.thirst - T.mortality.dehydrationThreshold) * T.mortality.dehydrationRate * hardy;
+  }
   if (a.sickness > 0) {
     a.sickness--;
-    a.health -= 1.7 * hardy;
+    a.health -= T.mortality.sicknessDamage * hardy;
   }
 
-  const warmth = sim.temperature + (w.shelter[i] > 0 ? 12 : 0) +
-    (tribe?.knowledge.unlocked.fire ? 9 : 0) + a.traits.hardiness * 8;
-  if (warmth < 0) a.health -= -warmth * 0.35;
+  const warmth = warmthAt(sim, a, i, tribe);
+  if (warmth < T.warmth.damageBelow) a.health -= -warmth * T.warmth.damageRate;
 
   const years = yearsOf(a);
-  if (years > ELDER_AGE) a.health -= (years - ELDER_AGE) * 0.035;
+  if (years > ELDER_AGE) a.health -= (years - ELDER_AGE) * T.mortality.elderDecayRate;
 
-  if (a.hunger < 30 && a.thirst < 40 && a.health < 100) a.health += 0.5;
+  if (
+    a.hunger < T.mortality.recoveryHungerBelow &&
+    a.thirst < T.mortality.recoveryThirstBelow &&
+    a.health < 100
+  ) {
+    a.health += T.mortality.recoveryRate;
+  }
   a.health = Math.min(100, a.health);
 
   if (a.health <= 0) {
     sim.killAgent(a, causeOfDeath(a, warmth));
     return;
   }
-  if (years > MAX_AGE && sim.rng.chance(0.05)) {
+  if (years > MAX_AGE && sim.rng.chance(T.mortality.oldAgeDeathChance)) {
     sim.killAgent(a, 'old age');
   }
 }

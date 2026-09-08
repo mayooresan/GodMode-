@@ -87,12 +87,15 @@ export interface TileInfo {
   agents: number;
 }
 
-/** Wire order for agent states; index into this is what the stream sends. */
-export const AGENT_STATES = [
-  'seek_water', 'forage', 'hunt', 'fish', 'seek_shelter', 'deposit', 'craft',
-  'build', 'reproduce', 'socialize', 'explore', 'fight', 'rest',
-] as const;
-
+/**
+ * Human-readable names for agent states.
+ *
+ * The *ordering* of states is not duplicated here — the server sends its own
+ * list in the `init` payload and the client indexes into that, so the wire
+ * format has a single source of truth. This map is presentation only, keyed by
+ * the ids the server sends; an unknown id degrades to the raw id rather than
+ * silently mislabelling somebody.
+ */
 export const STATE_LABEL: Record<string, string> = {
   seek_water: 'Seeking water',
   forage: 'Foraging',

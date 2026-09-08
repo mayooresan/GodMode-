@@ -12,6 +12,8 @@ import {
   resolveReproduction, setRelation, subjugate, updateDiplomacy, updateTerritory,
 } from './tribes.js';
 import { placeName } from './names.js';
+import { TUNABLES as T } from './tunables.js';
+import { History } from './history.js';
 import { ADULT_AGE, ELDER_AGE, TICKS_PER_YEAR, config } from '../config.js';
 
 export interface SimOptions {
@@ -76,6 +78,8 @@ export class Simulation {
   effects: ActiveEffect[] = [];
 
   events: WorldEvent[] = [];
+  /** Per-sample aggregates, so the world can be asked about its own past. */
+  history: History;
   private eventSeq = 0;
 
   stats = { births: 0, deaths: 0 };
@@ -88,6 +92,11 @@ export class Simulation {
     this.opts = opts;
     this.rng = new Rng(opts.seed);
     this.world = generateWorld(opts.width, opts.height, opts.seed);
+    this.history = new History({
+      stride: config.historyStride,
+      maxSamples: config.historyMaxSamples,
+      maxTribeSeries: config.historyMaxTribeSeries,
+    });
   }
 
   get maxAgents(): number {
@@ -240,10 +249,10 @@ export class Simulation {
     let cap = 0;
     for (const i of tribe.territory) cap += this.world.carrying[i];
     const techBonus = 1 +
-      (tribe.knowledge.unlocked.farming ? 0.5 : 0) +
-      (tribe.knowledge.unlocked.shelter ? 0.3 : 0) +
-      (tribe.knowledge.unlocked.fire ? 0.15 : 0);
-    return Math.max(8, cap * 0.12 * techBonus);
+      (tribe.knowledge.unlocked.farming ? T.tribe.capacityBonusFarming : 0) +
+      (tribe.knowledge.unlocked.shelter ? T.tribe.capacityBonusShelter : 0) +
+      (tribe.knowledge.unlocked.fire ? T.tribe.capacityBonusFire : 0);
+    return Math.max(8, cap * T.tribe.carryingCapacityFactor * techBonus);
   }
 
   contestedTiles(A: Tribe, B: Tribe): number {
@@ -253,13 +262,15 @@ export class Simulation {
     for (const i of smaller.territory) {
       const x = i % this.world.width;
       const y = (i / this.world.width) | 0;
-      if (Math.hypot(x - larger.cx, y - larger.cy) < 14) n++;
+      if (Math.hypot(x - larger.cx, y - larger.cy) < T.diplomacy.contestedRadius) n++;
     }
     return n;
   }
 
   addResearch(tribe: Tribe, amount: number): void {
-    const fed = tribe.foodStore > this.tribePopulation(tribe.id) * 4 ? 1.4 : 1;
+    const fed = tribe.foodStore > this.tribePopulation(tribe.id) * T.research.wellFedStorePerHead
+      ? T.research.wellFedBonus
+      : 1;
     depositResearch(tribe, amount * fed);
   }
 
@@ -298,7 +309,11 @@ export class Simulation {
         worstCause = cause;
       }
     }
-    if (worstCount >= 4 && worstCause !== 'combat' && worstCause !== 'old age') {
+    if (
+      worstCount >= T.climate.deathReportThreshold &&
+      worstCause !== 'combat' &&
+      worstCause !== 'old age'
+    ) {
       this.log({
         kind: 'death',
         severity: 'warn',
@@ -329,7 +344,8 @@ export class Simulation {
   private updateClimate(): void {
     const phase = (this.tick % TICKS_PER_YEAR) / TICKS_PER_YEAR;
     // Peak summer a quarter-year after the origin; winter dips below freezing.
-    let temp = 13 + 17 * Math.sin(phase * Math.PI * 2 - Math.PI / 2);
+    let temp = T.climate.baseTemperature +
+      T.climate.seasonalAmplitude * Math.sin(phase * Math.PI * 2 - Math.PI / 2);
     this.hungerRate = 1;
 
     for (const fx of this.effects) {
@@ -342,8 +358,8 @@ export class Simulation {
   /** Seasonal growth multiplier applied to tile regeneration. */
   private seasonalGrowth(): number {
     const t = this.temperature;
-    if (t <= 0) return 0.15;
-    return Math.min(1.6, 0.35 + t / 22);
+    if (t <= 0) return T.climate.growthFrozen;
+    return Math.min(T.climate.growthMax, T.climate.growthBase + t / T.climate.growthTemperatureDivisor);
   }
 
   seasonName(): string {
@@ -359,7 +375,9 @@ export class Simulation {
         for (const a of this.agents) {
           if (!a.alive || a.sickness > 0) continue;
           if (Math.hypot(a.x - fx.x, a.y - fx.y) > r) continue;
-          if (this.rng.chance(0.06 * fx.magnitude)) a.sickness = this.rng.int(10, 40);
+          if (this.rng.chance(T.disasters.pestilenceInfectionChance * fx.magnitude)) {
+          a.sickness = this.rng.int(T.disasters.sicknessMinTicks, T.disasters.sicknessMaxTicks);
+        }
         }
       }
     }
@@ -385,10 +403,15 @@ export class Simulation {
         .map(([id]) => Number(id));
       if (enemies.length === 0) continue;
       const roster = this.agentsOf(tribe.id).filter(
-        (a) => isAdult(a) && !isElder(a) && a.health > 45 && a.hunger < 70,
+        (a) =>
+          isAdult(a) && !isElder(a) &&
+          a.health > T.combat.minHealthToFight &&
+          a.hunger < T.combat.maxHungerToFight,
       );
       roster.sort((a, b) => b.traits.aggression - a.traits.aggression);
-      const share = tribe.knowledge.unlocked.warfare ? 0.45 : 0.28;
+      const share = tribe.knowledge.unlocked.warfare
+        ? T.combat.mobilisationShareWithWarfare
+        : T.combat.mobilisationShare;
       const count = Math.min(roster.length, Math.ceil(roster.length * share));
       for (let i = 0; i < count; i++) this.warBand.add(roster[i].id);
     }
@@ -448,10 +471,10 @@ export class Simulation {
       const dy = Math.sign(best.cy - a.y);
       const nx = this.world.clampX(a.x + dx);
       const ny = this.world.clampY(a.y + dy);
-      if (this.world.isPassable(this.world.idx(nx, ny)) && a.stamina > 6) {
+      if (this.world.isPassable(this.world.idx(nx, ny)) && a.stamina > T.combat.minStaminaToAdvance) {
         a.x = nx;
         a.y = ny;
-        a.stamina -= 2;
+        a.stamina -= T.combat.staminaPerAdvance;
       }
     }
   }
@@ -460,19 +483,22 @@ export class Simulation {
     const power = (x: Agent) => {
       const t = this.tribes.get(x.tribeId);
       const tools = t ? Math.min(1, t.toolStore / Math.max(1, this.tribePopulation(t.id))) : 0;
-      const tech = t?.knowledge.unlocked.warfare ? 1.45 : 1;
-      const fort = this.world.shelter[this.world.idx(x.x, x.y)] >= 3 ? 1.3 : 1;
-      return (x.health / 100) * (1 + tools * 0.6) * (0.6 + x.traits.aggression) * tech * fort;
+      const tech = t?.knowledge.unlocked.warfare ? T.combat.warfareTechAdvantage : 1;
+      const fort = this.world.shelter[this.world.idx(x.x, x.y)] >= 3 ? T.combat.palisadeAdvantage : 1;
+      return (x.health / 100) *
+        (1 + tools * T.combat.toolAdvantage) *
+        (T.combat.aggressionFloor + x.traits.aggression) *
+        tech * fort;
     };
-    const pa = power(a) * this.rng.range(0.7, 1.3);
-    const pb = power(b) * this.rng.range(0.7, 1.3);
-    const swing = 26;
+    const pa = power(a) * this.rng.range(T.combat.rollMin, T.combat.rollMax);
+    const pb = power(b) * this.rng.range(T.combat.rollMin, T.combat.rollMax);
+    const swing = T.combat.swingDamage;
     if (pa >= pb) {
       b.health -= swing * (pa / Math.max(0.1, pb));
-      a.health -= swing * 0.28;
+      a.health -= swing * T.combat.winnerDamageFraction;
     } else {
       a.health -= swing * (pb / Math.max(0.1, pa));
-      b.health -= swing * 0.28;
+      b.health -= swing * T.combat.winnerDamageFraction;
     }
 
     for (const [loser, winner] of [[a, b], [b, a]] as const) {
@@ -508,7 +534,7 @@ export class Simulation {
     this.battleCasualties.clear();
 
     for (const [key, total] of [...this.battleTotals]) {
-      if (total < 3) continue;
+      if (total < T.combat.reportThreshold) continue;
       const [aId, bId] = key.split(':').map(Number);
       const A = this.tribes.get(aId);
       const B = this.tribes.get(bId);
@@ -529,12 +555,12 @@ export class Simulation {
   private resolveConquest(): void {
     for (const tribe of [...this.tribes.values()]) {
       const pop = this.tribePopulation(tribe.id);
-      if (pop === 0 || pop > 8) continue;
+      if (pop === 0 || pop > T.diplomacy.conquestPopulation) continue;
       for (const [idStr, rel] of Object.entries(tribe.relations)) {
         if (rel !== Relation.War) continue;
         const rival = this.tribes.get(Number(idStr));
         if (!rival) continue;
-        if (this.tribePopulation(rival.id) > pop * 3) {
+        if (this.tribePopulation(rival.id) > pop * T.diplomacy.conquestRatio) {
           subjugate(this, rival, tribe);
           break;
         }
@@ -572,13 +598,13 @@ export class Simulation {
       for (const a of this.agentsOf(tribe.id)) {
         if (isAdult(a)) curiosity += a.traits.inquisitiveness;
       }
-      this.addResearch(tribe, curiosity * 0.3);
+      this.addResearch(tribe, curiosity * T.research.perAdultPerTick);
       advanceKnowledge(this, tribe);
       this.rationFood(tribe);
       // Communal stores spoil; there is no granary in the Stone Age, so a
       // store is a buffer that carries a tribe through a bad winter, never a
       // bank that grows for ever.
-      tribe.foodStore = Math.max(0, tribe.foodStore * 0.995);
+      tribe.foodStore = Math.max(0, tribe.foodStore * T.tribe.storeSpoilagePerTick);
       if ((this.tick + tribe.id) % 8 === 0) {
         updateTerritory(this, tribe);
         migrationAndFission(this, tribe);
@@ -590,6 +616,8 @@ export class Simulation {
     this.resolveConquest();
     this.cullExtinctTribes();
     this.compact();
+
+    this.history.observe(this, this.stats.births, this.stats.deaths);
 
     this.birthWindow.push(this.stats.births);
     this.deathWindow.push(this.stats.deaths);
@@ -617,17 +645,24 @@ export class Simulation {
 
     // The hungriest eat first, and only those close enough to reach the camp.
     const eligible = members
-      .filter((a) => a.hunger > 25 && Math.hypot(a.x - tribe.cx, a.y - tribe.cy) < 12)
+      .filter(
+        (a) =>
+          a.hunger > T.rationing.hungerThreshold &&
+          Math.hypot(a.x - tribe.cx, a.y - tribe.cy) < T.rationing.campRadius,
+      )
       .sort((x, y) => y.hunger - x.hunger);
 
     for (const a of eligible) {
       if (tribe.foodStore <= 0) break;
       // Children and elders are fed even when they cannot forage for themselves.
-      const need = Math.min((a.hunger - 20) / 3.2, 6);
+      const need = Math.min(
+        (a.hunger - T.rationing.targetHunger) / T.foraging.caloriesPerHungerPoint,
+        T.rationing.maxServing,
+      );
       const served = Math.min(need, tribe.foodStore);
       if (served <= 0.05) continue;
       tribe.foodStore -= served;
-      a.hunger = Math.max(0, a.hunger - served * 3.2);
+      a.hunger = Math.max(0, a.hunger - served * T.foraging.caloriesPerHungerPoint);
     }
   }
 
@@ -996,7 +1031,11 @@ export class Simulation {
         return `Flood at (${x}, ${y})`;
       }
       case 'long_winter': {
-        this.effects.push({ kind: 'long_winter', ticksLeft: ticks, magnitude: 16 * magnitude });
+        this.effects.push({
+          kind: 'long_winter',
+          ticksLeft: ticks,
+          magnitude: T.disasters.longWinterTemperatureDrop * magnitude,
+        });
         this.log({ kind: 'disaster', severity: 'critical', text: `A long winter descended upon the world for ${ticks} ticks.` });
         return 'Long winter began';
       }
@@ -1006,9 +1045,13 @@ export class Simulation {
         return `Pestilence at (${x}, ${y})`;
       }
       case 'famine': {
-        this.effects.push({ kind: 'famine', ticksLeft: ticks, magnitude: 0.9 * magnitude });
+        this.effects.push({
+          kind: 'famine',
+          ticksLeft: ticks,
+          magnitude: T.disasters.famineHungerMultiplier * magnitude,
+        });
         for (let i = 0; i < this.world.size; i++) {
-          this.world.food[i] *= 0.4;
+          this.world.food[i] *= T.disasters.famineFoodRemaining;
         }
         this.log({ kind: 'disaster', severity: 'critical', text: `Famine gripped the world; forage withered everywhere.` });
         return 'Famine began';

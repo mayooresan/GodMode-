@@ -65,6 +65,13 @@ export async function registerRoutes(app: FastifyInstance, runner: Runner): Prom
 
   app.get('/api/vitals', async () => runner.sim.vitals());
 
+  /** Recorded aggregates over time, columnar. `limit` takes the newest N samples. */
+  app.get('/api/history', async (req) => {
+    const raw = (req.query as Record<string, unknown>)?.limit;
+    const limit = raw === undefined ? undefined : Math.max(1, Math.min(int(raw, 600), 5000));
+    return runner.sim.history.payload(limit);
+  });
+
   app.get('/api/events', async (req) => {
     const limit = int((req.query as Record<string, unknown>)?.limit, 100);
     return { events: runner.sim.events.slice(-Math.max(1, Math.min(limit, 600))) };

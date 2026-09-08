@@ -192,6 +192,7 @@ export default function TribesPage({
       <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-edge px-3 py-2">
         <a href="#/" className="rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-ink-secondary hover:border-ink-muted hover:text-ink-primary">← Dashboard</a>
         <a href="#/map" className="rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-ink-secondary hover:border-ink-muted hover:text-ink-primary">⛶ Map</a>
+        <a href="#/history" className="rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-ink-secondary hover:border-ink-muted hover:text-ink-primary">◷ History</a>
         <h1 className="text-sm font-semibold">Tribal Statistics</h1>
         {vitals && (
           <span className="font-mono text-[11px] text-ink-muted">

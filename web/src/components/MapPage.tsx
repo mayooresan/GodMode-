@@ -19,6 +19,7 @@ interface Props {
   tribes: TribeRow[];
   vitals: Vitals | null;
   connection: ConnectionState;
+  states: string[];
 }
 
 /**
@@ -29,7 +30,7 @@ interface Props {
  * god actions targeted by clicking the tile you are looking at.
  */
 export default function MapPage({
-  world, agentHistory, worldVersion, tribes, vitals, connection,
+  world, agentHistory, worldVersion, tribes, vitals, connection, states,
 }: Props) {
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 6 });
   const [overlay, setOverlay] = useState<Overlay>('terrain');
@@ -148,6 +149,7 @@ export default function MapPage({
         >
           ← Dashboard
         </a>
+        <a href="#/history" className="rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-ink-secondary hover:border-ink-muted hover:text-ink-primary">◷ History</a>
         <a
           href="#/tribes"
           className="rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-ink-secondary hover:border-ink-muted hover:text-ink-primary"
@@ -240,6 +242,7 @@ export default function MapPage({
             overlay={overlay}
             showTrails={showTrails}
             focusTribeId={focusTribeId}
+            states={states}
             selected={selected}
             brushRadius={radius}
             camera={camera}

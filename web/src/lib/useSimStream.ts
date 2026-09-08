@@ -41,6 +41,8 @@ interface Stream {
   worldVersion: number;
   /** Recent agent-detail frames, oldest first. Empty unless `detail` was set. */
   agentHistory: React.MutableRefObject<AgentFrame[]>;
+  /** Agent-state ids in wire order, as declared by the server's init payload. */
+  states: string[];
 }
 
 const EVENT_LIMIT = 300;
@@ -59,6 +61,7 @@ export function useSimStream(detail = false): Stream {
   const [tribes, setTribes] = useState<TribeRow[]>([]);
   const [events, setEvents] = useState<WorldEvent[]>([]);
   const [worldVersion, setWorldVersion] = useState(0);
+  const [states, setStates] = useState<string[]>([]);
   const world = useRef<WorldState | null>(null);
   const agentHistory = useRef<AgentFrame[]>([]);
 
@@ -90,6 +93,7 @@ export function useSimStream(detail = false): Stream {
         setVitals(data.vitals);
         setTribes(data.tribes);
         setEvents(data.events.slice(-EVENT_LIMIT));
+        if (Array.isArray(data.states)) setStates(data.states);
         setConnection('live');
         bump();
       });
@@ -146,5 +150,5 @@ export function useSimStream(detail = false): Stream {
     };
   }, [bump, detail]);
 
-  return { connection, vitals, tribes, events, world, worldVersion, agentHistory };
+  return { connection, vitals, tribes, events, world, worldVersion, agentHistory, states };
 }

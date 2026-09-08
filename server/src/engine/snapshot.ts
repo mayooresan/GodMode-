@@ -45,6 +45,7 @@ interface SnapshotDoc {
   world: Record<string, string | number>;
   tribes: Array<Omit<Tribe, 'territory'> & { territory: number[] }>;
   /** Added after v3 shipped; absent in older snapshots, hence optional. */
+  history?: ReturnType<Simulation['history']['serialize']>;
   retiredTribes?: Array<Omit<Tribe, 'territory'> & { territory: number[] }>;
   agents: Agent[];
   events: unknown[];
@@ -84,6 +85,7 @@ export function serialize(sim: Simulation): SnapshotDoc {
     },
     tribes: [...sim.tribes.values()].map((t) => ({ ...t, territory: [...t.territory] })),
     retiredTribes: sim.retiredTribes.map((t) => ({ ...t, territory: [] })),
+    history: sim.history.serialize(),
     agents: sim.agents.filter((a) => a.alive),
     events: sim.events,
   };
@@ -130,6 +132,7 @@ export function deserialize(doc: SnapshotDoc): Simulation {
   }
   // Deliberately tolerant: snapshots written before this field existed simply
   // resume with an empty chronicle rather than being rejected as incompatible.
+  sim.history.restore(doc.history);
   sim.retiredTribes = (doc.retiredTribes ?? []).map(
     (t) => ({ ...t, territory: new Set<number>() } as Tribe),
   );

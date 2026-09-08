@@ -4,6 +4,7 @@ import {
 import { TICKS_PER_YEAR } from '../config.js';
 import { isAdult, isElder, mixTraits, createAgent, findNearest } from './agents.js';
 import { MAX_TRIBES, makeIdentity, placeName } from './names.js';
+import { TUNABLES as T } from './tunables.js';
 import type { Simulation } from './simulation.js';
 
 /**
@@ -86,7 +87,10 @@ export function updateTerritory(sim: Simulation, tribe: Tribe): void {
   const w = sim.world;
   const pop = sim.tribePopulation(tribe.id);
   if (pop === 0) return;
-  const radius = Math.min(18, 3 + Math.sqrt(pop) * 1.5);
+  const radius = Math.min(
+    T.tribe.territoryRadiusMax,
+    T.tribe.territoryRadiusBase + Math.sqrt(pop) * T.tribe.territoryRadiusPerSqrtPop,
+  );
   const r = Math.ceil(radius);
 
   for (const i of tribe.territory) {
@@ -133,7 +137,7 @@ export function advanceKnowledge(sim: Simulation, tribe: Tribe): void {
   // for tribes that are actually at war.
   const atWar = Object.values(tribe.relations).includes(Relation.War);
   const ordered = [...pending].sort((a, b) => {
-    const bias = (t: TechId) => (t === 'warfare' && atWar ? -3000 : 0);
+    const bias = (t: TechId) => (t === 'warfare' && atWar ? -T.research.wartimeWarfareBias : 0);
     return TECH_META[a].cost + bias(a) - (TECH_META[b].cost + bias(b));
   });
 
@@ -165,7 +169,7 @@ export function depositResearch(tribe: Tribe, amount: number): void {
   let target = pending[0];
   let best = Infinity;
   for (const t of pending) {
-    const cost = TECH_META[t].cost + (t === 'warfare' && atWar ? -3000 : 0);
+    const cost = TECH_META[t].cost + (t === 'warfare' && atWar ? -T.research.wartimeWarfareBias : 0);
     if (cost < best) {
       best = cost;
       target = t;
@@ -210,15 +214,17 @@ export function resolveReproduction(sim: Simulation): void {
       if (sim.agentCount >= sim.maxAgents) break;
       const m = males[p];
       const f = females[p];
-      const cost = 14;
+      const cost = T.birth.foodCost;
       if (tribe.foodStore < cost + pop * 2) break;
       // Both parents must be near camp for the pairing to take.
-      if (Math.hypot(m.x - f.x, m.y - f.y) > 6) continue;
-      if (!sim.rng.chance(0.32 + Math.min(0.3, tribe.foodStore / (pop * 40)))) continue;
+      if (Math.hypot(m.x - f.x, m.y - f.y) > T.birth.pairDistance) continue;
+      const conception = T.birth.baseChance +
+        Math.min(T.birth.abundanceBonusMax, tribe.foodStore / (pop * T.birth.abundanceDivisorPerHead));
+      if (!sim.rng.chance(conception)) continue;
 
       tribe.foodStore -= cost;
-      m.breedCooldown = Math.round(TICKS_PER_YEAR * 0.8);
-      f.breedCooldown = Math.round(TICKS_PER_YEAR * 1.6);
+      m.breedCooldown = Math.round(TICKS_PER_YEAR * T.birth.fatherCooldownYears);
+      f.breedCooldown = Math.round(TICKS_PER_YEAR * T.birth.motherCooldownYears);
 
       const child = createAgent(
         sim.nextAgentId++,
@@ -231,7 +237,7 @@ export function resolveReproduction(sim: Simulation): void {
       );
       // Infant mortality is folded into a spawn-time roll rather than modelled
       // tick by tick; it keeps early population curves realistic and cheap.
-      if (sim.rng.chance(0.12)) {
+      if (sim.rng.chance(T.birth.infantMortality)) {
         tribe.deaths++;
         sim.stats.deaths++;
         continue;
@@ -255,15 +261,15 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
   let localFood = 0;
   for (const i of tribe.territory) localFood += w.food[i];
   const perCapita = localFood / Math.max(1, pop);
-  if (perCapita < 4) tribe.stress += 1;
+  if (perCapita < T.tribe.hardshipFoodPerHead) tribe.stress += 1;
   else tribe.stress = Math.max(0, tribe.stress - 1);
 
   // Move camp toward better ground.
-  if (tribe.stress > 40) {
-    const spot = findNearest(w, tribe.cx, tribe.cy, 26, (i, x, y) => {
+  if (tribe.stress > T.migration.relocateStress) {
+    const spot = findNearest(w, tribe.cx, tribe.cy, T.migration.relocateSearchRadius, (i, x, y) => {
       if (!w.isPassable(i) || w.isWater(i)) return false;
       if (w.owner[i] >= 0 && w.owner[i] !== tribe.id) return false;
-      return w.foodCap[i] > 30 && sim.nearWater(x, y, 4);
+      return w.foodCap[i] > T.migration.relocateMinFoodCap && sim.nearWater(x, y, T.migration.relocateWaterRadius);
     });
     if (spot && (spot.x !== tribe.cx || spot.y !== tribe.cy)) {
       tribe.cx = spot.x;
@@ -281,34 +287,38 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
   }
 
   // Fission: a large tribe buds off a splinter group.
-  if (pop >= 55 && sim.tribes.size < MAX_TRIBES && sim.rng.chance(0.06)) {
-    const spot = findNearest(w, tribe.cx, tribe.cy, 34, (i, x, y) => {
+  if (
+    pop >= T.migration.fissionPopulation &&
+    sim.tribes.size < MAX_TRIBES &&
+    sim.rng.chance(T.migration.fissionChance)
+  ) {
+    const spot = findNearest(w, tribe.cx, tribe.cy, T.migration.fissionSearchRadius, (i, x, y) => {
       if (!w.isPassable(i) || w.isWater(i)) return false;
       if (w.owner[i] >= 0) return false;
-      if (Math.hypot(x - tribe.cx, y - tribe.cy) < 12) return false;
-      return w.foodCap[i] > 26 && sim.nearWater(x, y, 5);
+      if (Math.hypot(x - tribe.cx, y - tribe.cy) < T.migration.fissionMinDistance) return false;
+      return w.foodCap[i] > T.migration.fissionMinFoodCap && sim.nearWater(x, y, T.migration.fissionWaterRadius);
     });
     if (!spot) return;
 
     const daughter = createTribe(sim, spot.x, spot.y);
     // Splinters inherit the parent's oral tradition, slightly degraded.
     for (const t of TECHS) {
-      daughter.knowledge.progress[t] = tribe.knowledge.progress[t] * 0.6;
+      daughter.knowledge.progress[t] = tribe.knowledge.progress[t] * T.migration.fissionKnowledgeRetained;
       // Knowledge travels with the people who carry it. A splinter band that
       // leaves without a skilled knapper simply loses the technique and has to
       // rediscover it, which is what keeps tech levels uneven across the map.
-      daughter.knowledge.unlocked[t] = tribe.knowledge.unlocked[t] && sim.rng.chance(0.7);
+      daughter.knowledge.unlocked[t] = tribe.knowledge.unlocked[t] && sim.rng.chance(T.migration.fissionTechRetainChance);
     }
     normaliseKnowledge(daughter);
-    daughter.foodStore = tribe.foodStore * 0.3;
-    tribe.foodStore *= 0.7;
+    daughter.foodStore = tribe.foodStore * T.migration.fissionFoodShare;
+    tribe.foodStore *= 1 - T.migration.fissionFoodShare;
     daughter.relations[tribe.id] = Relation.Trade;
     tribe.relations[daughter.id] = Relation.Trade;
 
     const movers = sim
       .agentsOf(tribe.id)
       .filter((a) => isAdult(a) && !isElder(a))
-      .slice(0, Math.floor(pop * 0.35));
+      .slice(0, Math.floor(pop * T.migration.fissionMoverShare));
     for (const a of movers) {
       a.tribeId = daughter.id;
       a.tx = spot.x;
@@ -338,22 +348,29 @@ export function updateDiplomacy(sim: Simulation): void {
       const A = tribes[a];
       const B = tribes[b];
       const dist = Math.hypot(A.cx - B.cx, A.cy - B.cy);
-      if (dist > 34) continue;
+      if (dist > T.diplomacy.contactDistance) continue;
 
       const rel = A.relations[B.id] ?? Relation.Neutral;
       if (rel === Relation.Vassal) continue;
 
       const aggression = sim.tribeAggression(A.id) + sim.tribeAggression(B.id);
-      const scarcity = (A.stress + B.stress) / 80;
+      const scarcity = (A.stress + B.stress) / T.diplomacy.scarcityDivisor;
       const contested = sim.contestedTiles(A, B);
 
       if (rel === Relation.War) {
         // Wars end when one side is bled dry or both sides lose the appetite.
         const popA = sim.tribePopulation(A.id);
         const popB = sim.tribePopulation(B.id);
-        if (popA < 6 || popB < 6 || sim.rng.chance(0.008)) {
+        if (
+          popA < T.diplomacy.exhaustedPopulation ||
+          popB < T.diplomacy.exhaustedPopulation ||
+          sim.rng.chance(T.diplomacy.peaceChance)
+        ) {
           setRelation(A, B, Relation.Neutral);
-          sim.warCooldown.set(pairKey(A.id, B.id), sim.tick + TICKS_PER_YEAR * 2);
+          sim.warCooldown.set(
+            pairKey(A.id, B.id),
+            sim.tick + TICKS_PER_YEAR * T.diplomacy.peaceCooldownYears,
+          );
           sim.log({
             kind: 'peace',
             severity: 'info',
@@ -365,8 +382,12 @@ export function updateDiplomacy(sim: Simulation): void {
       }
 
       const cooling = (sim.warCooldown.get(pairKey(A.id, B.id)) ?? 0) > sim.tick;
-      const warPressure = aggression * 0.5 + scarcity + contested / 40 + (dist < 16 ? 0.3 : 0);
-      if (!cooling && warPressure > 1.35 && sim.rng.chance(0.05)) {
+      const warPressure =
+        aggression * T.diplomacy.aggressionWeight +
+        scarcity +
+        contested / T.diplomacy.contestedDivisor +
+        (dist < T.diplomacy.proximityDistance ? T.diplomacy.proximityBonus : 0);
+      if (!cooling && warPressure > T.diplomacy.warThreshold && sim.rng.chance(T.diplomacy.warChance)) {
         setRelation(A, B, Relation.War);
         sim.log({
           kind: 'war',
@@ -382,7 +403,7 @@ export function updateDiplomacy(sim: Simulation): void {
         continue;
       }
 
-      if (warPressure < 0.7 && sim.rng.chance(0.03)) {
+      if (warPressure < T.diplomacy.tradeThreshold && sim.rng.chance(T.diplomacy.tradeChance)) {
         if (rel !== Relation.Trade) {
           setRelation(A, B, Relation.Trade);
           sim.log({
@@ -394,7 +415,7 @@ export function updateDiplomacy(sim: Simulation): void {
         }
       }
 
-      if (rel === Relation.Trade && sim.rng.chance(0.2)) runTrade(sim, A, B);
+      if (rel === Relation.Trade && sim.rng.chance(T.diplomacy.tradeRunChance)) runTrade(sim, A, B);
     }
   }
 }
@@ -412,19 +433,19 @@ export function setRelation(A: Tribe, B: Tribe, rel: (typeof Relation)[keyof typ
 function runTrade(sim: Simulation, A: Tribe, B: Tribe): void {
   const popA = Math.max(1, sim.tribePopulation(A.id));
   const popB = Math.max(1, sim.tribePopulation(B.id));
-  const surplusA = A.foodStore - popA * 6;
-  const surplusB = B.foodStore - popB * 6;
+  const surplusA = A.foodStore - popA * T.diplomacy.tradeReservePerHead;
+  const surplusB = B.foodStore - popB * T.diplomacy.tradeReservePerHead;
 
-  if (surplusA > 20 && B.toolStore > 3) {
-    const food = Math.min(surplusA * 0.3, 40);
-    const tools = Math.min(B.toolStore * 0.3, food / 8);
+  if (surplusA > T.diplomacy.tradeSurplusThreshold && B.toolStore > 3) {
+    const food = Math.min(surplusA * T.diplomacy.tradeFraction, T.diplomacy.tradeFoodCap);
+    const tools = Math.min(B.toolStore * T.diplomacy.tradeFraction, food / T.diplomacy.tradeFoodPerTool);
     A.foodStore -= food;
     B.foodStore += food;
     B.toolStore -= tools;
     A.toolStore += tools;
-  } else if (surplusB > 20 && A.toolStore > 3) {
-    const food = Math.min(surplusB * 0.3, 40);
-    const tools = Math.min(A.toolStore * 0.3, food / 8);
+  } else if (surplusB > T.diplomacy.tradeSurplusThreshold && A.toolStore > 3) {
+    const food = Math.min(surplusB * T.diplomacy.tradeFraction, T.diplomacy.tradeFoodCap);
+    const tools = Math.min(A.toolStore * T.diplomacy.tradeFraction, food / T.diplomacy.tradeFoodPerTool);
     B.foodStore -= food;
     A.foodStore += food;
     A.toolStore -= tools;
@@ -434,9 +455,9 @@ function runTrade(sim: Simulation, A: Tribe, B: Tribe): void {
   // Technology diffusion: contact spreads ideas faster than isolation.
   for (const t of TECHS) {
     if (A.knowledge.unlocked[t] && !B.knowledge.unlocked[t]) {
-      B.knowledge.progress[t] += TECH_META[t].cost * 0.02;
+      B.knowledge.progress[t] += TECH_META[t].cost * T.research.tradeDiffusionRate;
     } else if (B.knowledge.unlocked[t] && !A.knowledge.unlocked[t]) {
-      A.knowledge.progress[t] += TECH_META[t].cost * 0.02;
+      A.knowledge.progress[t] += TECH_META[t].cost * T.research.tradeDiffusionRate;
     }
   }
 }
@@ -451,14 +472,14 @@ export function subjugate(sim: Simulation, victor: Tribe, loser: Tribe): void {
   const survivors = sim.agentsOf(loser.id);
   for (const a of survivors) {
     a.tribeId = victor.id;
-    a.morale = Math.max(10, a.morale - 25);
+    a.morale = Math.max(10, a.morale - T.diplomacy.subjugationMoralePenalty);
   }
   victor.foodStore += loser.foodStore;
   victor.toolStore += loser.toolStore;
   for (const t of TECHS) {
     victor.knowledge.progress[t] = Math.max(
       victor.knowledge.progress[t],
-      loser.knowledge.progress[t] * 0.8,
+      loser.knowledge.progress[t] * T.diplomacy.subjugationKnowledgeRetained,
     );
     victor.knowledge.unlocked[t] = victor.knowledge.unlocked[t] || loser.knowledge.unlocked[t];
   }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentFrame, TribeRow, WorldState } from '../lib/types';
-import { AGENT_STATES } from '../lib/types';
 import { TERRAIN, foodRamp, hexToRgb } from '../lib/palette';
 
 export type Overlay = 'terrain' | 'territory' | 'food';
@@ -35,6 +34,8 @@ interface Props {
   overlay: Overlay;
   showTrails: boolean;
   focusTribeId: number | null;
+  /** Agent-state ids in wire order, from the server. */
+  states: string[];
   selected: { x: number; y: number } | null;
   brushRadius: number;
   camera: Camera;
@@ -56,7 +57,7 @@ export const MAX_SCALE = 40;
  */
 export default function MapCanvas({
   world, agentHistory, worldVersion, tribes, overlay, showTrails, focusTribeId,
-  selected, brushRadius, camera, onCameraChange, onSelect, onHover,
+  states, selected, brushRadius, camera, onCameraChange, onSelect, onHover,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const terrainRef = useRef<HTMLCanvasElement | null>(null);
@@ -399,14 +400,14 @@ export default function MapCanvas({
         const i = t.y * w.width + t.x;
         const byte = w.tiles[i];
         const latest = agentHistory.current[agentHistory.current.length - 1];
-        const states: string[] = [];
+        const seen: string[] = [];
         let count = 0;
         if (latest) {
           const d2 = latest.data;
           for (let o = 0; o < d2.length; o += 7) {
             if (d2[o + 1] === t.x && d2[o + 2] === t.y) {
               count++;
-              if (states.length < 6) states.push(AGENT_STATES[d2[o + 4]] ?? 'rest');
+              if (seen.length < 6) seen.push(states[d2[o + 4]] ?? `state ${d2[o + 4]}`);
             }
           }
         }
@@ -421,7 +422,7 @@ export default function MapCanvas({
           blessed: !!(byte & 0b100000),
           cursed: !!(byte & 0b1000000),
           agents: count,
-          states,
+          states: seen,
         });
       }}
       onPointerUp={(e) => {
