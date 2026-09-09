@@ -17,8 +17,8 @@ export const config = {
   /** Milliseconds between ticks. God console can change this at runtime. */
   tickMs: num(process.env.TICK_MS, 1000),
 
-  startingTribes: num(process.env.STARTING_TRIBES, 6),
-  startingAgentsPerTribe: num(process.env.STARTING_AGENTS, 12),
+  startingTribes: num(process.env.STARTING_TRIBES, 14),
+  startingAgentsPerTribe: num(process.env.STARTING_AGENTS, 8),
   /** Hard ceiling; protects the droplet from an unbounded population blow-up. */
   maxAgents: num(process.env.MAX_AGENTS, 6000),
 

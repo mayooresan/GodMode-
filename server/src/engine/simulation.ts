@@ -179,6 +179,13 @@ export class Simulation {
   addAgent(a: Agent): void {
     this.agents.push(a);
     this.byId.set(a.id, a);
+    // Keep the per-tribe index current rather than waiting for next tick's
+    // reindex. Reproduction runs before conquest, so a child born this tick
+    // must be visible to a subjugation that happens later in the same tick —
+    // otherwise it is left pointing at a tribe that no longer exists.
+    const list = this.byTribe.get(a.tribeId);
+    if (list) list.push(a);
+    else this.byTribe.set(a.tribeId, [a]);
   }
 
   agentById(id: number): Agent | undefined {
@@ -263,14 +270,31 @@ export class Simulation {
     return Math.max(8, cap * T.tribe.carryingCapacityFactor * techBonus);
   }
 
+  /**
+   * Length of the shared frontier between two tribes, in tiles.
+   *
+   * Previously this counted the smaller tribe's tiles lying near the larger
+   * tribe's *camp*, which collapsed to zero once territories grew large and
+   * camps sat far apart — so the one term that should make neighbours fight
+   * over land contributed nothing, and the map settled into permanent peace.
+   * Border friction is what actually drives territorial war.
+   */
   contestedTiles(A: Tribe, B: Tribe): number {
-    let n = 0;
+    const w = this.world;
     const smaller = A.territory.size < B.territory.size ? A : B;
-    const larger = smaller === A ? B : A;
+    const other = (smaller === A ? B : A).id;
+    let n = 0;
     for (const i of smaller.territory) {
-      const x = i % this.world.width;
-      const y = (i / this.world.width) | 0;
-      if (Math.hypot(x - larger.cx, y - larger.cy) < T.diplomacy.contestedRadius) n++;
+      const x = i % w.width;
+      const y = (i / w.width) | 0;
+      if (
+        (x > 0 && w.owner[i - 1] === other) ||
+        (x < w.width - 1 && w.owner[i + 1] === other) ||
+        (y > 0 && w.owner[i - w.width] === other) ||
+        (y < w.height - 1 && w.owner[i + w.width] === other)
+      ) {
+        n++;
+      }
     }
     return n;
   }
@@ -563,12 +587,17 @@ export class Simulation {
   private resolveConquest(): void {
     for (const tribe of [...this.tribes.values()]) {
       const pop = this.tribePopulation(tribe.id);
-      if (pop === 0 || pop > T.diplomacy.conquestPopulation) continue;
+      if (pop === 0) continue;
       for (const [idStr, rel] of Object.entries(tribe.relations)) {
         if (rel !== Relation.War) continue;
         const rival = this.tribes.get(Number(idStr));
         if (!rival) continue;
-        if (this.tribePopulation(rival.id) > pop * T.diplomacy.conquestRatio) {
+        if (this.tribePopulation(rival.id) <= pop * T.diplomacy.conquestRatio) continue;
+        // A remnant yields at once; a substantial people holds out for a while
+        // even once the war is plainly lost.
+        const yields = pop <= T.diplomacy.conquestPopulation ||
+          this.rng.chance(T.diplomacy.conquestChance);
+        if (yields) {
           subjugate(this, rival, tribe);
           break;
         }

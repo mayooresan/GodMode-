@@ -217,8 +217,14 @@ const outcomes: Check[] = [
         : `population hit the ${sim.maxAgents} ceiling — growth is unbounded`,
   },
   {
-    name: 'at least two tribes remain',
-    run: (sim) => (sim.tribes.size >= 2 ? null : `only ${sim.tribes.size} tribe(s) left`),
+    // Consolidation into a single empire is a legitimate ending, so this only
+    // guards against every tribe vanishing while people are still alive —
+    // which would mean agents orphaned from any tribal structure.
+    name: 'surviving people belong to a tribe',
+    run: (sim) =>
+      sim.agentCount === 0 || sim.tribes.size >= 1
+        ? null
+        : `${sim.agentCount} people alive but no tribes exist`,
   },
   {
     name: 'every biome exists in the world',

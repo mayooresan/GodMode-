@@ -111,6 +111,14 @@ export function createTribe(sim: Simulation, cx: number, cy: number): Tribe {
   return tribe;
 }
 
+/** How far a tribe of this size reaches when claiming land. */
+export function claimRadius(population: number): number {
+  return Math.min(
+    T.tribe.territoryRadiusMax,
+    T.tribe.territoryRadiusBase + Math.sqrt(population) * T.tribe.territoryRadiusPerSqrtPop,
+  );
+}
+
 /**
  * Claim tiles around the camp.
  *
@@ -122,10 +130,7 @@ export function updateTerritory(sim: Simulation, tribe: Tribe): void {
   const w = sim.world;
   const pop = sim.tribePopulation(tribe.id);
   if (pop === 0) return;
-  const radius = Math.min(
-    T.tribe.territoryRadiusMax,
-    T.tribe.territoryRadiusBase + Math.sqrt(pop) * T.tribe.territoryRadiusPerSqrtPop,
-  );
+  const radius = claimRadius(pop);
   const r = Math.ceil(radius);
 
   for (const i of tribe.territory) {
@@ -431,7 +436,13 @@ export function updateDiplomacy(sim: Simulation): void {
       const A = tribes[a];
       const B = tribes[b];
       const dist = Math.hypot(A.cx - B.cx, A.cy - B.cy);
-      if (dist > T.diplomacy.contactDistance) continue;
+      // Two peoples know each other when the land they claim comes close to
+      // touching, not when their camps happen to sit within a fixed radius.
+      const reach =
+        claimRadius(sim.tribePopulation(A.id)) +
+        claimRadius(sim.tribePopulation(B.id)) +
+        T.diplomacy.contactMargin;
+      if (dist > reach) continue;
 
       const rel = A.relations[B.id] ?? Relation.Neutral;
       if (rel === Relation.Vassal) continue;
@@ -469,7 +480,7 @@ export function updateDiplomacy(sim: Simulation): void {
         aggression * T.diplomacy.aggressionWeight +
         scarcity +
         contested / T.diplomacy.contestedDivisor +
-        (dist < T.diplomacy.proximityDistance ? T.diplomacy.proximityBonus : 0);
+        (dist < reach * T.diplomacy.proximityFraction ? T.diplomacy.proximityBonus : 0);
       if (!cooling && warPressure > T.diplomacy.warThreshold && sim.rng.chance(T.diplomacy.warChance)) {
         setRelation(A, B, Relation.War);
         sim.log({
@@ -552,7 +563,9 @@ function runTrade(sim: Simulation, A: Tribe, B: Tribe): void {
  * happened to most Stone Age groups that lost a territorial war.
  */
 export function subjugate(sim: Simulation, victor: Tribe, loser: Tribe): void {
-  const survivors = sim.agentsOf(loser.id);
+  // Scan the whole roster rather than the per-tribe index: this must not miss
+  // anybody, or the leftovers are orphaned when the tribe is retired.
+  const survivors = sim.agents.filter((a) => a.alive && a.tribeId === loser.id);
   for (const a of survivors) {
     a.tribeId = victor.id;
     a.morale = Math.max(10, a.morale - T.diplomacy.subjugationMoralePenalty);

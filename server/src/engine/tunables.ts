@@ -174,7 +174,16 @@ export const TUNABLES = {
     /** Claim radius grows with population: base + sqrt(pop) * factor, capped. */
     territoryRadiusBase: 3,
     territoryRadiusPerSqrtPop: 1.5,
-    territoryRadiusMax: 18,
+    /**
+     * Ceiling on claim radius.
+     *
+     * At 18 a tribe held about a tenth of the map however large it grew, so no
+     * empire could ever form — the world sat in a permanent balance of powers.
+     * Raised so that dominance is expressible: a tribe of a thousand can claim
+     * most of a 128-tile world, and the extra land feeds a larger population,
+     * which claims further still.
+     */
+    territoryRadiusMax: 55,
     /** Fraction of claimed carrying capacity a tribe can actually sustain. */
     carryingCapacityFactor: 0.12,
     capacityBonusFarming: 0.5,
@@ -293,15 +302,24 @@ export const TUNABLES = {
   },
 
   diplomacy: {
-    /** Beyond this distance two tribes ignore each other. */
-    contactDistance: 34,
+    /**
+     * Extra slack beyond two tribes' claim radii before they lose contact.
+     *
+     * Contact used to be a flat camp-to-camp distance, which stopped matching
+     * reality once territories could grow large: a consolidated map left tribes
+     * whose lands plainly touched but whose camps were too far apart to notice
+     * each other, so the world settled into permanent peace and could never
+     * consolidate further. Contact now follows the land they actually hold.
+     */
+    contactMargin: 8,
     /** Weights that combine into war pressure. */
     aggressionWeight: 0.5,
     scarcityDivisor: 80,
-    contestedDivisor: 40,
-    proximityDistance: 16,
+    /** Shared-frontier tiles that amount to one unit of war pressure. */
+    contestedDivisor: 60,
+    /** Share of contact reach within which crowding adds to war pressure. */
+    proximityFraction: 0.5,
     proximityBonus: 0.3,
-    contestedRadius: 14,
     /** Pressure above which war may be declared, and the per-check chance. */
     warThreshold: 1.35,
     warChance: 0.05,
@@ -324,9 +342,19 @@ export const TUNABLES = {
     /** Knowledge and morale outcomes of subjugation. */
     subjugationKnowledgeRetained: 0.8,
     subjugationMoralePenalty: 25,
-    /** A tribe this small next to one this much larger is absorbed. */
+    /**
+     * Capitulation is relative, not absolute.
+     *
+     * Requiring the loser to be ground down to a handful of people meant a
+     * tribe of two hundred losing a war was never absorbed — it simply fought
+     * on for ever, which is the other reason the map never consolidated. A
+     * tribe now yields when badly outmatched, with a per-tick chance so it is
+     * a slow capitulation rather than a single decisive instant.
+     */
+    conquestRatio: 1.6,
+    conquestChance: 0.008,
+    /** A tribe below this size yields as soon as it is outmatched at all. */
     conquestPopulation: 8,
-    conquestRatio: 3,
   },
 
   combat: {

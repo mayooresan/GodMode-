@@ -155,10 +155,20 @@ across the map.
 
 Neighbours drift toward **trade** (food for tools, plus technology diffusion)
 when both are comfortable, and toward **war** when scarcity, aggression and
-contested land pile up. A tribe bled down to a handful of survivors next to a
-much larger enemy is **subjugated** — its people change allegiance rather than
-dying, which is what actually happened to most groups that lost a territorial
-war.
+**shared frontier** pile up — border friction between two claims is what drives
+territorial war, so the more land two peoples rub against, the likelier they are
+to fight over it. Two tribes are in contact when the land they claim comes close
+to touching, not when their camps sit within some fixed radius, so contact grows
+with the empires themselves. A tribe that is badly outmatched in a war eventually
+**capitulates** — its people change allegiance rather than dying, which is what
+actually happened to most groups that lost a territorial war. A remnant yields
+at once; a substantial people holds out for a while even once the war is plainly
+lost.
+
+Because a victor absorbs the loser's population, and claim radius grows with
+population, conquest compounds: the world begins fragmented into many small
+tribes and consolidates over centuries into a few large powers, sometimes into a
+single empire holding the whole map.
 
 ---
 
