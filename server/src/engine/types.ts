@@ -204,6 +204,19 @@ export interface Tribe {
   kills: number;
   foundedTick: number;
   extinctTick: number | null;
+  /**
+   * All-time high-water marks, with the tick each was reached.
+   *
+   * Kept on the tribe rather than derived from `history`, which is a ring
+   * buffer: once old samples are dropped a peak reached early in a long run
+   * would be lost, and a record you can lose is not a record.
+   */
+  peakPopulation: number;
+  peakPopulationTick: number;
+  peakTerritory: number;
+  peakTerritoryTick: number;
+  peakFood: number;
+  peakTechs: number;
   /** Ticks of accumulated hardship; drives migration decisions. */
   stress: number;
   overlordId: number | null;

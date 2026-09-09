@@ -216,6 +216,27 @@ export class History {
     };
   }
 
+  /**
+   * Highest population this tribe reached within the retained samples, and the
+   * tick it happened. Used to seed records for worlds that were running before
+   * high-water marks were tracked; the buffer only goes back so far, so this is
+   * a floor on the true peak, not necessarily the true peak.
+   */
+  peakFor(tribeId: number): { pop: number; tick: number } | null {
+    const series = this.tribeSeries.get(tribeId);
+    if (!series) return null;
+    let best = 0;
+    let at = -1;
+    for (let i = 0; i < series.pops.length; i++) {
+      if (series.pops[i] > best) {
+        best = series.pops[i];
+        at = i;
+      }
+    }
+    if (at < 0) return null;
+    return { pop: best, tick: this.ticks[at] ?? 0 };
+  }
+
   /** Plain object for the snapshot. */
   serialize() {
     return {

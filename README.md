@@ -225,9 +225,18 @@ Every figure the engine holds about every tribe, in one sortable table.
   named diplomatic relations.
 - **CSV export** of the current sort and filter, for taking a run's numbers
   elsewhere.
-- **Fallen tribes** — a chronicle of the last 80 peoples that ended, each with
-  its founding and final year, lifespan, whether it died out or was subjugated
-  and by whom. This survives restarts.
+**All-time records** (the *Records* tab) covers every tribe that has ever
+existed, living and ended, in one sortable table: founding and final year,
+lifespan, peak population and the year it was reached, peak territory, peak
+food store, most technologies ever known, everyone ever born and died, enemies
+slain, and how it ended — died out, or subjugated and by whom.
+
+Peaks are high-water marks kept on the tribe itself, not derived from the
+history buffer: that is a ring buffer, and a record that can age out of one is
+not a record. A peak reached three centuries ago and never matched since is
+exactly the thing worth seeing, so it has to survive the samples being dropped.
+Peaks that predate tracking show as `—` rather than `0`, which would assert
+something false. The engine keeps the last 80 tribes that ended.
 
 ### History (`#/history`)
 

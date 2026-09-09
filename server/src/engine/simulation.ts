@@ -609,6 +609,9 @@ export class Simulation {
         updateTerritory(this, tribe);
         migrationAndFission(this, tribe);
       }
+      // Last, so the marks reflect this tick's territory rather than last
+      // tick's — territory is recomputed above, inside the staggered block.
+      this.updateRecords(tribe);
     }
 
     if (this.tick % 12 === 0) updateDiplomacy(this);
@@ -628,6 +631,22 @@ export class Simulation {
 
     this.tickDurations.push(Date.now() - t0);
     if (this.tickDurations.length > 30) this.tickDurations.shift();
+  }
+
+  /** Advance a tribe's all-time high-water marks. */
+  private updateRecords(tribe: Tribe): void {
+    const pop = this.tribePopulation(tribe.id);
+    if (pop > tribe.peakPopulation) {
+      tribe.peakPopulation = pop;
+      tribe.peakPopulationTick = this.tick;
+    }
+    if (tribe.territory.size > tribe.peakTerritory) {
+      tribe.peakTerritory = tribe.territory.size;
+      tribe.peakTerritoryTick = this.tick;
+    }
+    if (tribe.foodStore > tribe.peakFood) tribe.peakFood = Math.round(tribe.foodStore);
+    const techs = TECHS.filter((t) => tribe.knowledge.unlocked[t]).length;
+    if (techs > tribe.peakTechs) tribe.peakTechs = techs;
   }
 
   /**
@@ -776,6 +795,13 @@ export class Simulation {
         births: tribe.births,
         deaths: tribe.deaths,
         kills: tribe.kills,
+        foundedYear: Math.floor(tribe.foundedTick / TICKS_PER_YEAR),
+        peakPopulation: tribe.peakPopulation,
+        peakPopulationYear: Math.floor(tribe.peakPopulationTick / TICKS_PER_YEAR),
+        peakTerritory: tribe.peakTerritory,
+        peakTerritoryYear: Math.floor(tribe.peakTerritoryTick / TICKS_PER_YEAR),
+        peakFood: tribe.peakFood,
+        peakTechs: tribe.peakTechs,
         occupations,
         techs: TECHS.filter((t) => tribe.knowledge.unlocked[t]).map((t) => TECH_META[t].label),
         research: TECHS.map((t) => ({
@@ -819,6 +845,12 @@ export class Simulation {
           births: t.births,
           deaths: t.deaths,
           kills: t.kills,
+          peakPopulation: t.peakPopulation,
+          peakPopulationYear: Math.floor(t.peakPopulationTick / TICKS_PER_YEAR),
+          peakTerritory: t.peakTerritory,
+          peakTerritoryYear: Math.floor(t.peakTerritoryTick / TICKS_PER_YEAR),
+          peakFood: t.peakFood,
+          peakTechs: t.peakTechs,
           techs: TECHS.filter((k) => t.knowledge.unlocked[k]).map((k) => TECH_META[k].label),
           fate: t.overlordId !== null ? 'subjugated' : 'died out',
           conqueror: conqueror ? conqueror.name : null,

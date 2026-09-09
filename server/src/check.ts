@@ -151,6 +151,21 @@ const structural: Check[] = [
     },
   },
   {
+    name: 'records are never below present state',
+    run: (sim) => {
+      for (const tribe of sim.tribes.values()) {
+        const pop = sim.tribePopulation(tribe.id);
+        if (tribe.peakPopulation < pop) {
+          return `${tribe.name} peak population ${tribe.peakPopulation} < current ${pop}`;
+        }
+        if (tribe.peakTerritory < tribe.territory.size) {
+          return `${tribe.name} peak territory ${tribe.peakTerritory} < current ${tribe.territory.size}`;
+        }
+      }
+      return null;
+    },
+  },
+  {
     name: 'the live-agent index matches the agent array',
     run: (sim) => {
       const alive = sim.agents.filter((a) => a.alive).length;
@@ -219,6 +234,29 @@ const outcomes: Check[] = [
       for (const o of OCCUPATIONS) {
         const share = (mix[o] ?? 0) / total;
         if (share > 0.9) return `${o} is ${(share * 100).toFixed(0)}% of everyone — the FSM is stuck`;
+      }
+      return null;
+    },
+  },
+  {
+    name: 'history columns stay aligned',
+    run: (sim) => {
+      const h = sim.history.payload();
+      const cols: Array<[string, number[]]> = [
+        ['population', h.population], ['young', h.young], ['adults', h.adults],
+        ['elders', h.elders], ['tribeCount', h.tribeCount], ['births', h.births],
+        ['deaths', h.deaths], ['food', h.food], ['claimed', h.claimed],
+        ['temperature', h.temperature], ['techs', h.techs], ['wars', h.wars],
+      ];
+      for (const [name, col] of cols) {
+        if (col.length !== h.tick.length) {
+          return `${name} has ${col.length} samples, tick axis has ${h.tick.length}`;
+        }
+      }
+      for (const t of h.tribes) {
+        if (t.pops.length !== h.tick.length) {
+          return `series for ${t.name} has ${t.pops.length} samples, tick axis has ${h.tick.length}`;
+        }
       }
       return null;
     },

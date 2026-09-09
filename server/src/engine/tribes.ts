@@ -26,6 +26,28 @@ export function normaliseKnowledge(tribe: Tribe): void {
   }
 }
 
+/**
+ * Fill in record fields absent from snapshots written before they existed.
+ *
+ * Uses the tribe's present state as the floor, so an old world resumes with
+ * sensible records rather than zeroes that the next tick would beat anyway.
+ */
+export function ensureRecords(tribe: Tribe, tick: number, population: number): void {
+  const t = tribe as Partial<Tribe> & Tribe;
+  if (typeof t.peakPopulation !== 'number') {
+    t.peakPopulation = population;
+    t.peakPopulationTick = tick;
+  }
+  if (typeof t.peakTerritory !== 'number') {
+    t.peakTerritory = tribe.territory.size;
+    t.peakTerritoryTick = tick;
+  }
+  if (typeof t.peakFood !== 'number') t.peakFood = Math.round(tribe.foodStore);
+  if (typeof t.peakTechs !== 'number') {
+    t.peakTechs = TECHS.filter((k) => tribe.knowledge.unlocked[k]).length;
+  }
+}
+
 export function emptyKnowledge(): Tribe['knowledge'] {
   const progress = {} as Record<TechId, number>;
   const unlocked = {} as Record<TechId, boolean>;
@@ -64,6 +86,12 @@ export function createTribe(sim: Simulation, cx: number, cy: number): Tribe {
     kills: 0,
     foundedTick: sim.tick,
     extinctTick: null,
+    peakPopulation: 0,
+    peakPopulationTick: sim.tick,
+    peakTerritory: 0,
+    peakTerritoryTick: sim.tick,
+    peakFood: 0,
+    peakTechs: 0,
     stress: 0,
     overlordId: null,
   };

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { get } from '../lib/api';
 import { OCCUPATIONS } from '../lib/types';
-import type { FallenTribe, TribeRow, Vitals } from '../lib/types';
+import type { FallenTribe, RecordRow, TribeRow, Vitals } from '../lib/types';
+import RecordsTable from './RecordsTable';
 import OccupationBar, { OccupationLegend } from './OccupationBar';
 import type { ConnectionState } from '../lib/useSimStream';
 
@@ -95,6 +96,14 @@ const COLUMNS: Column[] = [
   { key: 'camp', label: 'Camp', hint: 'Settlement coordinates', numeric: false, value: (t) => `${t.cx},${t.cy}` },
 ];
 
+function download(text: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 export default function TribesPage({
   tribes, vitals, connection,
 }: {
@@ -107,7 +116,7 @@ export default function TribesPage({
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<number | null>(null);
   const [fallen, setFallen] = useState<FallenTribe[]>([]);
-  const [showFallen, setShowFallen] = useState(false);
+  const [view, setView] = useState<'living' | 'records'>('living');
 
   // The chronicle changes only when a tribe ends, so it polls rather than
   // riding the per-tick frame.
@@ -124,6 +133,60 @@ export default function TribesPage({
       clearInterval(id);
     };
   }, []);
+
+  /**
+   * Every tribe that has ever existed, living and ended, in one list.
+   * This supersedes the old fallen-tribes panel: it carries the same facts plus
+   * the peaks, and it is sortable.
+   */
+  const records: RecordRow[] = useMemo(() => {
+    const now = vitals?.year ?? 0;
+    const living: RecordRow[] = tribes.map((t) => ({
+      id: t.id,
+      name: t.name,
+      glyph: t.glyph,
+      color: t.color,
+      status: 'alive',
+      conqueror: null,
+      foundedYear: t.foundedYear,
+      endedYear: null,
+      lifespanYears: Math.max(0, now - t.foundedYear),
+      population: t.population,
+      peakPopulation: t.peakPopulation,
+      peakPopulationYear: t.peakPopulationYear,
+      peakTerritory: t.peakTerritory,
+      peakTerritoryYear: t.peakTerritoryYear,
+      peakFood: t.peakFood,
+      peakTechs: t.peakTechs,
+      births: t.births,
+      deaths: t.deaths,
+      kills: t.kills,
+    }));
+    const ended: RecordRow[] = fallen.map((f) => ({
+      id: f.id,
+      name: f.name,
+      glyph: f.glyph,
+      color: f.color,
+      status: f.fate === 'subjugated' ? 'subjugated' : 'died out',
+      conqueror: f.conqueror,
+      foundedYear: f.foundedYear,
+      endedYear: f.extinctYear,
+      lifespanYears: f.lifespanYears,
+      population: 0,
+      peakPopulation: f.peakPopulation,
+      peakPopulationYear: f.peakPopulationYear,
+      peakTerritory: f.peakTerritory,
+      peakTerritoryYear: f.peakTerritoryYear,
+      peakFood: f.peakFood,
+      peakTechs: f.peakTechs,
+      births: f.births,
+      deaths: f.deaths,
+      kills: f.kills,
+    }));
+    const q = query.trim().toLowerCase();
+    const all = [...living, ...ended];
+    return q ? all.filter((r) => r.name.toLowerCase().includes(q)) : all;
+  }, [tribes, fallen, vitals?.year, query]);
 
   const rows = useMemo(() => {
     const col = COLUMNS.find((c) => c.key === sortKey) ?? COLUMNS[1];
@@ -170,6 +233,17 @@ export default function TribesPage({
   };
 
   const exportCsv = () => {
+    if (view === 'records') {
+      const cols = Object.keys(records[0] ?? {}) as Array<keyof RecordRow>;
+      const csv = [cols.join(',')]
+        .concat(records.map((r) => cols.map((c) => {
+          const v = r[c];
+          return typeof v === 'number' ? String(v) : `"${String(v ?? '')}"`;
+        }).join(',')))
+        .join('\n');
+      download(csv, `records-tick-${vitals?.tick ?? 0}.csv`);
+      return;
+    }
     const header = COLUMNS.map((c) => c.label).join(',');
     const body = rows
       .map((t) => COLUMNS.map((c) => {
@@ -177,12 +251,7 @@ export default function TribesPage({
         return typeof v === 'number' ? (Math.round(v * 100) / 100).toString() : `"${String(v)}"`;
       }).join(','))
       .join('\n');
-    const blob = new Blob([`${header}\n${body}\n`], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `tribes-tick-${vitals?.tick ?? 0}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    download(`${header}\n${body}\n`, `tribes-tick-${vitals?.tick ?? 0}.csv`);
   };
 
   const conn = connection === 'live' ? 'bg-good' : connection === 'connecting' ? 'bg-warning animate-pulse' : 'bg-critical';
@@ -209,125 +278,100 @@ export default function TribesPage({
           <button onClick={exportCsv} className="rounded border border-edge bg-surface-1 px-2 py-1 text-[11px] text-ink-secondary hover:text-ink-primary">
             ↓ CSV
           </button>
-          <button
-            onClick={() => setShowFallen((v) => !v)}
-            className={`rounded border px-2 py-1 text-[11px] transition-colors ${
-              showFallen ? 'border-divine/60 bg-divine/10 text-divine' : 'border-edge bg-surface-1 text-ink-muted hover:text-ink-secondary'
-            }`}
-          >
-            ⚰ Fallen ({fallen.length})
-          </button>
+          <div className="flex overflow-hidden rounded border border-edge">
+            <button
+              onClick={() => setView('living')}
+              className={`px-2 py-1 text-[11px] transition-colors ${
+                view === 'living' ? 'bg-surface-3 text-ink-primary' : 'bg-surface-1 text-ink-muted hover:text-ink-secondary'
+              }`}
+            >
+              Living ({tribes.length})
+            </button>
+            <button
+              onClick={() => setView('records')}
+              className={`px-2 py-1 text-[11px] transition-colors ${
+                view === 'records' ? 'bg-surface-3 text-ink-primary' : 'bg-surface-1 text-ink-muted hover:text-ink-secondary'
+              }`}
+            >
+              ⚑ Records ({records.length})
+            </button>
+          </div>
           <span className={`h-2 w-2 rounded-full ${conn}`} title={connection} />
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 xl:flex-row">
+      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+        {view === 'records' ? (
+          <RecordsTable rows={records} />
+        ) : (
         <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-edge bg-surface-1">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge px-3 py-2">
-            <h2 className="text-[12px] font-semibold">
-              Living tribes <span className="font-normal text-ink-muted">({rows.length})</span>
-            </h2>
-            <OccupationLegend />
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto">
-            <table className="w-full border-collapse text-left text-[12px]">
-              <thead className="sticky top-0 z-10 bg-surface-2 text-[10px] uppercase tracking-wider text-ink-muted">
-                <tr>
-                  {COLUMNS.map((c) => (
-                    <th
-                      key={c.key}
-                      title={c.hint}
-                      onClick={() => toggleSort(c.key)}
-                      className={`cursor-pointer select-none whitespace-nowrap px-2 py-2 font-medium hover:text-ink-primary ${
-                        c.numeric ? 'text-right' : 'text-left'
-                      } ${sortKey === c.key ? 'text-ink-primary' : ''}`}
-                    >
-                      {c.label}
-                      <span className="ml-1 inline-block w-2">
-                        {sortKey === c.key ? (dir === 'asc' ? '▲' : '▼') : ''}
-                      </span>
-                    </th>
-                  ))}
-                  <th className="w-40 px-2 py-2 font-medium">Occupation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr><td colSpan={COLUMNS.length + 1} className="px-3 py-8 text-center text-ink-muted">
-                    {query ? 'No tribe matches that filter.' : 'No tribes remain. Humanity is extinct.'}
-                  </td></tr>
-                )}
-                {rows.map((t) => (
-                  <TribeRowView
-                    key={t.id}
-                    tribe={t}
-                    all={tribes}
-                    maxes={maxes}
-                    expanded={expanded === t.id}
-                    onToggle={() => setExpanded(expanded === t.id ? null : t.id)}
-                  />
-                ))}
-              </tbody>
-              {rows.length > 0 && (
-                <tfoot className="sticky bottom-0 bg-surface-2 text-[11px]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge px-3 py-2">
+              <h2 className="text-[12px] font-semibold">
+                Living tribes <span className="font-normal text-ink-muted">({rows.length})</span>
+              </h2>
+              <OccupationLegend />
+            </div>
+  
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="w-full border-collapse text-left text-[12px]">
+                <thead className="sticky top-0 z-10 bg-surface-2 text-[10px] uppercase tracking-wider text-ink-muted">
                   <tr>
-                    <td className="px-2 py-2 font-medium text-ink-secondary">Total ({rows.length})</td>
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-primary">{int(totals.population)}</td>
-                    <td colSpan={3} />
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-primary">{int(totals.territory)}</td>
-                    <td />
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-primary">{int(totals.food)}</td>
-                    <td colSpan={6} />
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-secondary">{int(totals.births)}</td>
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-secondary">{int(totals.deaths)}</td>
-                    <td />
-                    <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-secondary">{int(totals.kills)}</td>
-                    <td colSpan={4} />
+                    {COLUMNS.map((c) => (
+                      <th
+                        key={c.key}
+                        title={c.hint}
+                        onClick={() => toggleSort(c.key)}
+                        className={`cursor-pointer select-none whitespace-nowrap px-2 py-2 font-medium hover:text-ink-primary ${
+                          c.numeric ? 'text-right' : 'text-left'
+                        } ${sortKey === c.key ? 'text-ink-primary' : ''}`}
+                      >
+                        {c.label}
+                        <span className="ml-1 inline-block w-2">
+                          {sortKey === c.key ? (dir === 'asc' ? '▲' : '▼') : ''}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="w-40 px-2 py-2 font-medium">Occupation</th>
                   </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </section>
-
-        {showFallen && (
-          <aside className="flex min-h-0 w-full flex-col rounded-lg border border-edge bg-surface-1 xl:w-[360px] xl:shrink-0">
-            <div className="border-b border-edge px-3 py-2">
-              <h2 className="text-[12px] font-semibold">Fallen tribes</h2>
-              <p className="mt-0.5 text-[11px] text-ink-muted">
-                Most recent first. The engine keeps the last 80.
-              </p>
+                </thead>
+                <tbody>
+                  {rows.length === 0 && (
+                    <tr><td colSpan={COLUMNS.length + 1} className="px-3 py-8 text-center text-ink-muted">
+                      {query ? 'No tribe matches that filter.' : 'No tribes remain. Humanity is extinct.'}
+                    </td></tr>
+                  )}
+                  {rows.map((t) => (
+                    <TribeRowView
+                      key={t.id}
+                      tribe={t}
+                      all={tribes}
+                      maxes={maxes}
+                      expanded={expanded === t.id}
+                      onToggle={() => setExpanded(expanded === t.id ? null : t.id)}
+                    />
+                  ))}
+                </tbody>
+                {rows.length > 0 && (
+                  <tfoot className="sticky bottom-0 bg-surface-2 text-[11px]">
+                    <tr>
+                      <td className="px-2 py-2 font-medium text-ink-secondary">Total ({rows.length})</td>
+                      <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-primary">{int(totals.population)}</td>
+                      <td colSpan={3} />
+                      <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-primary">{int(totals.territory)}</td>
+                      <td />
+                      <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-primary">{int(totals.food)}</td>
+                      <td colSpan={6} />
+                      <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-secondary">{int(totals.births)}</td>
+                      <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-secondary">{int(totals.deaths)}</td>
+                      <td />
+                      <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-secondary">{int(totals.kills)}</td>
+                      <td colSpan={4} />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-              {fallen.length === 0 && (
-                <p className="py-6 text-center text-[11px] text-ink-muted">
-                  No tribe has ended yet.
-                </p>
-              )}
-              <ul className="space-y-2">
-                {fallen.map((f) => (
-                  <li key={`${f.id}-${f.extinctYear}`} className="rounded border border-edge bg-surface-2 px-2.5 py-2 text-[11px]">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block h-2.5 w-2.5 rounded-sm opacity-60" style={{ background: f.color }} />
-                      <span aria-hidden>{f.glyph}</span>
-                      <span className="text-ink-secondary">{f.name}</span>
-                    </div>
-                    <p className="mt-1 text-ink-muted">
-                      {f.fate === 'subjugated' && f.conqueror
-                        ? <>Subjugated by <span className="text-ink-secondary">{f.conqueror}</span></>
-                        : 'Died out'}{' '}
-                      in year {f.extinctYear} · founded year {f.foundedYear} · lasted{' '}
-                      {f.lifespanYears} {f.lifespanYears === 1 ? 'year' : 'years'}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[10px] text-ink-muted">
-                      {f.births} born · {f.deaths} died · {f.kills} slain · {f.techs.length}/5 techs
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
+          </section>
         )}
       </main>
     </div>

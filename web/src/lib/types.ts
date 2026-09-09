@@ -50,6 +50,13 @@ export interface TribeRow {
   births: number;
   deaths: number;
   kills: number;
+  foundedYear: number;
+  peakPopulation: number;
+  peakPopulationYear: number;
+  peakTerritory: number;
+  peakTerritoryYear: number;
+  peakFood: number;
+  peakTechs: number;
   occupations: Record<string, number>;
   techs: string[];
   research: ResearchRow[];
@@ -133,9 +140,38 @@ export interface FallenTribe {
   births: number;
   deaths: number;
   kills: number;
+  peakPopulation: number;
+  peakPopulationYear: number;
+  peakTerritory: number;
+  peakTerritoryYear: number;
+  peakFood: number;
+  peakTechs: number;
   techs: string[];
   fate: string;
   conqueror: string | null;
+}
+
+/** A row in the all-time records table: any tribe that has ever existed. */
+export interface RecordRow {
+  id: number;
+  name: string;
+  glyph: string;
+  color: string;
+  status: 'alive' | 'died out' | 'subjugated';
+  conqueror: string | null;
+  foundedYear: number;
+  endedYear: number | null;
+  lifespanYears: number;
+  population: number;
+  peakPopulation: number;
+  peakPopulationYear: number;
+  peakTerritory: number;
+  peakTerritoryYear: number;
+  peakFood: number;
+  peakTechs: number;
+  births: number;
+  deaths: number;
+  kills: number;
 }
 
 /** Live world state assembled from the `init` frame plus streamed diffs. */

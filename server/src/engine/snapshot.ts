@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Simulation, SimOptions } from './simulation.js';
 import { World } from './world.js';
-import { normaliseKnowledge } from './tribes.js';
+import { ensureRecords, normaliseKnowledge } from './tribes.js';
 import type { Agent, Tribe } from './types.js';
 
 /**
@@ -138,6 +138,19 @@ export function deserialize(doc: SnapshotDoc): Simulation {
   );
 
   for (const a of doc.agents) sim.addAgent(a);
+
+  // Records were added after v3 shipped. Default them from present state, then
+  // raise them with whatever the retained history can prove — so a world that
+  // has been running for a while resumes with real peaks rather than blanks.
+  for (const tribe of [...sim.tribes.values(), ...sim.retiredTribes]) {
+    ensureRecords(tribe, sim.tick, sim.tribePopulation(tribe.id));
+    const peak = sim.history.peakFor(tribe.id);
+    if (peak && peak.pop > tribe.peakPopulation) {
+      tribe.peakPopulation = peak.pop;
+      tribe.peakPopulationTick = peak.tick;
+    }
+  }
+
   return sim;
 }
 
