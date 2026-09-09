@@ -92,6 +92,7 @@ export function createTribe(sim: Simulation, cx: number, cy: number): Tribe {
     kills: 0,
     foundedTick: sim.tick,
     extinctTick: null,
+    lastFissionTick: sim.tick,
     peakPopulation: 0,
     peakPopulationTick: sim.tick,
     peakTerritory: 0,
@@ -340,9 +341,14 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
     }
   }
 
-  // Fission: a large tribe buds off a splinter group.
+  // Fission: a tribe that has outgrown its land buds off a splinter group.
+  const cooldown = T.migration.fissionCooldownYears * TICKS_PER_YEAR;
+  const settled = sim.tick - tribe.foundedTick >= cooldown;
+  const rested = sim.tick - tribe.lastFissionTick >= cooldown;
+  const crowded = pop >= sim.territoryCapacity(tribe) * T.migration.fissionCapacityRatio;
   if (
     pop >= T.migration.fissionPopulation &&
+    settled && rested && crowded &&
     sim.tribes.size < MAX_TRIBES &&
     sim.rng.chance(T.migration.fissionChance)
   ) {
@@ -388,6 +394,8 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
     tribe.foodStore *= 1 - T.migration.fissionFoodShare;
     daughter.relations[tribe.id] = Relation.Trade;
     tribe.relations[daughter.id] = Relation.Trade;
+
+    tribe.lastFissionTick = sim.tick;
 
     const movers = [
       ...adultBand.slice(0, leaving),

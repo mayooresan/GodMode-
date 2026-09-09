@@ -145,7 +145,11 @@ curiosity:
 
 Tribes claim territory around their camp (radius grows with population),
 relocate when the land is exhausted, and **fission** into daughter tribes when
-they outgrow what their territory can feed. A splinter band only carries a
+they outgrow what their territory can feed. Fission needs all of: enough
+people, pressure against the land's carrying capacity, and a cooldown since the
+tribe was founded or last split — a group splits because the land will not hold
+it, not merely because it is numerous. The splinter band takes a slice of every
+age band, so parent and daughter both keep a whole age structure. A splinter band only carries a
 technique away if someone who knows it goes along, so tech levels stay uneven
 across the map.
 

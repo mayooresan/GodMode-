@@ -211,6 +211,8 @@ export interface Tribe {
   kills: number;
   foundedTick: number;
   extinctTick: number | null;
+  /** Tick of this tribe's most recent split, for the fission cooldown. */
+  lastFissionTick: number;
   /**
    * All-time high-water marks, with the tick each was reached.
    *

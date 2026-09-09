@@ -253,8 +253,23 @@ export const TUNABLES = {
     desperationWaterRadiusBonus: 4,
     desperationSearchBonus: 1,
     /** Population at which a tribe may bud off a daughter. */
-    fissionPopulation: 55,
-    fissionChance: 0.06,
+    fissionPopulation: 60,
+    fissionChance: 0.045,
+    /**
+     * Share of its land's carrying capacity a tribe must be pressing before it
+     * splits at all.
+     *
+     * Size alone used to be the whole trigger, so a thriving tribe on rich land
+     * budded off daughters just as readily as one running out of room. Groups
+     * split because the land will not hold them, not merely because they are
+     * numerous.
+     */
+    fissionCapacityRatio: 0.6,
+    /**
+     * Years a tribe must wait after founding, or after splitting, before it may
+     * split again. Without this a large tribe shed daughters back to back.
+     */
+    fissionCooldownYears: 8,
     fissionSearchRadius: 34,
     fissionMinDistance: 12,
     fissionMinFoodCap: 26,

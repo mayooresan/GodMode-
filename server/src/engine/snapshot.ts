@@ -130,6 +130,9 @@ export function deserialize(doc: SnapshotDoc): Simulation {
     // Repair worlds snapshotted before the unlocked/progress invariant was
     // enforced, so an existing save is corrected rather than carried forward.
     normaliseKnowledge(tribe);
+    // Added after v3: an older world simply becomes eligible to split again
+    // one cooldown after it resumes.
+    if (typeof tribe.lastFissionTick !== 'number') tribe.lastFissionTick = tribe.foundedTick;
     sim.tribes.set(tribe.id, tribe);
   }
   // Deliberately tolerant: snapshots written before this field existed simply
