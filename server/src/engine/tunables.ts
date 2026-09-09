@@ -179,11 +179,13 @@ export const TUNABLES = {
      *
      * At 18 a tribe held about a tenth of the map however large it grew, so no
      * empire could ever form — the world sat in a permanent balance of powers.
-     * Raised so that dominance is expressible: a tribe of a thousand can claim
-     * most of a 128-tile world, and the extra land feeds a larger population,
-     * which claims further still.
+     * Raised so that dominance is expressible: the extra land feeds a larger
+     * population, which claims further still. At this ceiling a single
+     * surviving empire can reach every corner of a 128-tile world, so a
+     * unified map is genuinely unified rather than one tribe sitting in the
+     * middle of unclaimed ground.
      */
-    territoryRadiusMax: 55,
+    territoryRadiusMax: 110,
     /** Fraction of claimed carrying capacity a tribe can actually sustain. */
     carryingCapacityFactor: 0.12,
     capacityBonusFarming: 0.5,
