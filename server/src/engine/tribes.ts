@@ -354,6 +354,26 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
     });
     if (!spot) return;
 
+    // Decide who leaves *before* founding anything, and take the same share of
+    // every age band rather than adults alone.
+    //
+    // Two bugs lived here. Capping movers at a share of total population while
+    // selecting from a list of adults let `slice` swallow every working-age
+    // adult, stranding the parent with only children and elders. And a band of
+    // pure adults gave the daughter a single narrow age cohort with a built-in
+    // fourteen-year gap before anyone else could work or fight — so one war in
+    // its first decade wiped out everybody who could hold a spear.
+    //
+    // Moving a slice of each band keeps both tribes demographically whole.
+    const members = sim.agentsOf(tribe.id);
+    const share = T.migration.fissionMoverShare;
+    const adultBand = members.filter((a) => isAdult(a) && !isElder(a));
+    const youngBand = members.filter((a) => !isAdult(a));
+    const elderBand = members.filter((a) => isElder(a));
+
+    const leaving = Math.floor(adultBand.length * share);
+    if (leaving < T.migration.fissionMinMovers) return;
+
     const daughter = createTribe(sim, spot.x, spot.y);
     // Splinters inherit the parent's oral tradition, slightly degraded.
     for (const t of TECHS) {
@@ -369,10 +389,11 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
     daughter.relations[tribe.id] = Relation.Trade;
     tribe.relations[daughter.id] = Relation.Trade;
 
-    const movers = sim
-      .agentsOf(tribe.id)
-      .filter((a) => isAdult(a) && !isElder(a))
-      .slice(0, Math.floor(pop * T.migration.fissionMoverShare));
+    const movers = [
+      ...adultBand.slice(0, leaving),
+      ...youngBand.slice(0, Math.floor(youngBand.length * share)),
+      ...elderBand.slice(0, Math.floor(elderBand.length * share)),
+    ];
     for (const a of movers) {
       a.tribeId = daughter.id;
       a.tx = spot.x;

@@ -259,9 +259,19 @@ export const TUNABLES = {
     fissionMinDistance: 12,
     fissionMinFoodCap: 26,
     fissionWaterRadius: 5,
-    /** Share of the parent's stores and people that leave. */
+    /** Share of the parent's stores that leaves with the splinter band. */
     fissionFoodShare: 0.3,
+    /**
+     * Share of the parent's *working-age adults* that leaves.
+     *
+     * Deliberately a share of adults, not of total population: this world runs
+     * bottom-heavy, so a share of the whole population routinely exceeds the
+     * entire adult count and would strip the parent of every person able to
+     * craft, build, fight or reproduce.
+     */
     fissionMoverShare: 0.35,
+    /** Below this many movers the band is not viable and fission is skipped. */
+    fissionMinMovers: 4,
     /** Progress a splinter retains, and its chance of keeping each technique. */
     fissionKnowledgeRetained: 0.6,
     fissionTechRetainChance: 0.7,
