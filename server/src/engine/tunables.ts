@@ -277,8 +277,12 @@ export const TUNABLES = {
     /**
      * Years a tribe must wait after founding, or after splitting, before it may
      * split again. Without this a large tribe shed daughters back to back.
+     *
+     * At a generation and a half, splitting is a rare event in a tribe's life
+     * rather than a recurring one, which suits a world meant to consolidate
+     * into empires rather than keep fragmenting.
      */
-    fissionCooldownYears: 8,
+    fissionCooldownYears: 30,
     fissionSearchRadius: 34,
     fissionMinDistance: 12,
     fissionMinFoodCap: 26,
