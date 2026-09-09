@@ -8,10 +8,11 @@ import {
   createAgent, isAdult, isElder, mixTraits, stepAgent, yearsOf, findNearest,
 } from './agents.js';
 import {
-  advanceKnowledge, createTribe, depositResearch, migrationAndFission,
+  advanceKnowledge, createTribe, depositResearch, foundSettlement, migrationAndFission,
   resolveReproduction, setRelation, subjugate, updateDiplomacy, updateTerritory,
 } from './tribes.js';
 import { placeName } from './names.js';
+import { campDistance } from './camps.js';
 import { TUNABLES as T } from './tunables.js';
 import { History } from './history.js';
 import { ADULT_AGE, ELDER_AGE, TICKS_PER_YEAR, config } from '../config.js';
@@ -644,6 +645,7 @@ export class Simulation {
       tribe.foodStore = Math.max(0, tribe.foodStore * T.tribe.storeSpoilagePerTick);
       if ((this.tick + tribe.id) % 8 === 0) {
         updateTerritory(this, tribe);
+        foundSettlement(this, tribe);
         migrationAndFission(this, tribe);
       }
       // Last, so the marks reflect this tick's territory rather than last
@@ -704,7 +706,7 @@ export class Simulation {
       .filter(
         (a) =>
           a.hunger > T.rationing.hungerThreshold &&
-          Math.hypot(a.x - tribe.cx, a.y - tribe.cy) < T.rationing.campRadius,
+          campDistance(tribe, a.x, a.y) < T.rationing.campRadius,
       )
       .sort((x, y) => y.hunger - x.hunger);
 

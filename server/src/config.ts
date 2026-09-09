@@ -19,8 +19,14 @@ export const config = {
 
   startingTribes: num(process.env.STARTING_TRIBES, 14),
   startingAgentsPerTribe: num(process.env.STARTING_AGENTS, 8),
-  /** Hard ceiling; protects the droplet from an unbounded population blow-up. */
-  maxAgents: num(process.env.MAX_AGENTS, 6000),
+  /**
+   * Safety valve, not a design ceiling.
+   *
+   * Tribe size is meant to be governed by land and settlements, never by this
+   * number. Set it high enough that it never binds in normal play; it exists so
+   * a runaway world cannot exhaust the droplet's memory.
+   */
+  maxAgents: num(process.env.MAX_AGENTS, 40000),
 
   /** Persistence. */
   dataDir: process.env.DATA_DIR ?? '/data',

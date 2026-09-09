@@ -5,6 +5,7 @@ import { TICKS_PER_YEAR } from '../config.js';
 import { isAdult, isElder, mixTraits, createAgent, findNearest } from './agents.js';
 import { MAX_TRIBES, makeIdentity, placeName, roman } from './names.js';
 import { TUNABLES as T } from './tunables.js';
+import { campDistance, nearestCamp } from './camps.js';
 import type { Simulation } from './simulation.js';
 
 /**
@@ -80,6 +81,7 @@ export function createTribe(sim: Simulation, cx: number, cy: number): Tribe {
     color: ident.color,
     cx,
     cy,
+    camps: [{ x: cx, y: cy }],
     foodStore: 40,
     toolStore: 0,
     woodStore: 0,
@@ -93,6 +95,7 @@ export function createTribe(sim: Simulation, cx: number, cy: number): Tribe {
     foundedTick: sim.tick,
     extinctTick: null,
     lastFissionTick: sim.tick,
+    lastSettlementTick: sim.tick,
     peakPopulation: 0,
     peakPopulationTick: sim.tick,
     peakTerritory: 0,
@@ -130,7 +133,9 @@ export function updateTerritory(sim: Simulation, tribe: Tribe): void {
   const w = sim.world;
   const pop = sim.tribePopulation(tribe.id);
   if (pop === 0) return;
-  const radius = claimRadius(pop);
+  // Each settlement claims its own share of the people, so a tribe with several
+  // camps reaches across far more ground than one camp ever could.
+  const radius = claimRadius(pop / tribe.camps.length);
   const r = Math.ceil(radius);
 
   for (const i of tribe.territory) {
@@ -141,29 +146,32 @@ export function updateTerritory(sim: Simulation, tribe: Tribe): void {
   }
   tribe.territory.clear();
 
-  for (let dy = -r; dy <= r; dy++) {
-    const y = tribe.cy + dy;
-    if (y < 0 || y >= w.height) continue;
-    for (let dx = -r; dx <= r; dx++) {
-      const x = tribe.cx + dx;
-      if (x < 0 || x >= w.width) continue;
-      const d = Math.hypot(dx, dy);
-      if (d > radius) continue;
-      const i = w.idx(x, y);
-      if (!w.isPassable(i)) continue;
+  for (const camp of tribe.camps) {
+    for (let dy = -r; dy <= r; dy++) {
+      const y = camp.y + dy;
+      if (y < 0 || y >= w.height) continue;
+      for (let dx = -r; dx <= r; dx++) {
+        const x = camp.x + dx;
+        if (x < 0 || x >= w.width) continue;
+        const d = Math.hypot(dx, dy);
+        if (d > radius) continue;
+        const i = w.idx(x, y);
+        if (!w.isPassable(i)) continue;
+        if (tribe.territory.has(i)) continue;
 
-      const current = w.owner[i];
-      if (current >= 0 && current !== tribe.id) {
-        const rival = sim.tribes.get(current);
-        if (rival) {
-          const rd = Math.hypot(rival.cx - x, rival.cy - y);
-          if (rd <= d) continue; // rival is closer; they keep it
-          rival.territory.delete(i);
+        const current = w.owner[i];
+        if (current >= 0 && current !== tribe.id) {
+          const rival = sim.tribes.get(current);
+          if (rival) {
+            // Whichever people has a settlement nearer the tile holds it.
+            if (campDistance(rival, x, y) <= d) continue;
+            rival.territory.delete(i);
+          }
         }
+        w.owner[i] = tribe.id;
+        tribe.territory.add(i);
+        w.markDirty(i);
       }
-      w.owner[i] = tribe.id;
-      tribe.territory.add(i);
-      w.markDirty(i);
     }
   }
 }
@@ -290,6 +298,54 @@ export function resolveReproduction(sim: Simulation): void {
 }
 
 /**
+ * Found a further settlement inside the tribe's own reach.
+ *
+ * This is growth, not division: the people stay one tribe. It is the mechanism
+ * that lets a tribe actually occupy a large territory instead of claiming a
+ * wide area while living in a single bubble around one camp.
+ */
+export function foundSettlement(sim: Simulation, tribe: Tribe): void {
+  const pop = sim.tribePopulation(tribe.id);
+  if (pop === 0) return;
+  if (tribe.camps.length >= T.migration.maxCampsPerTribe) return;
+  if (pop / tribe.camps.length < T.migration.settlementPopulation) return;
+  if (sim.tick - tribe.lastSettlementTick < T.migration.settlementCooldownYears * TICKS_PER_YEAR) {
+    return;
+  }
+
+  const w = sim.world;
+  // Search out from the settlement with the most people pressing on it.
+  const origin = tribe.camps.reduce((best, c) => {
+    const count = sim.agentsOf(tribe.id).filter((a) => nearestCamp(tribe, a.x, a.y) === c).length;
+    return count > best.count ? { camp: c, count } : best;
+  }, { camp: tribe.camps[0], count: -1 }).camp;
+
+  const spot = findNearest(w, origin.x, origin.y, T.migration.settlementSearchRadius, (i, x, y) => {
+    if (!w.isPassable(i) || w.isWater(i)) return false;
+    // Its own land, or ground nobody has claimed.
+    if (w.owner[i] >= 0 && w.owner[i] !== tribe.id) return false;
+    for (const c of tribe.camps) {
+      if (Math.hypot(x - c.x, y - c.y) < T.migration.settlementMinDistance) return false;
+    }
+    return w.foodCap[i] > T.migration.settlementMinFoodCap &&
+      sim.nearWater(x, y, T.migration.settlementWaterRadius);
+  });
+  if (!spot) return;
+
+  tribe.camps.push({ x: spot.x, y: spot.y });
+  tribe.lastSettlementTick = sim.tick;
+  sim.log({
+    kind: 'settlement',
+    severity: 'info',
+    tribeId: tribe.id,
+    x: spot.x,
+    y: spot.y,
+    text: `${tribe.name} founded a settlement in the ${placeName(spot.x, spot.y, w.width, w.height)} ` +
+      `(${tribe.camps.length} settlements).`,
+  });
+}
+
+/**
  * Relocate a camp when the surrounding land is exhausted, and split off a
  * daughter tribe when a settlement outgrows what its territory can feed.
  */
@@ -332,6 +388,7 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
       return w.foodCap[i] > minFood && sim.nearWater(x, y, waterRadius);
     });
     if (spot && (spot.x !== tribe.cx || spot.y !== tribe.cy)) {
+      tribe.camps[0] = { x: spot.x, y: spot.y };
       tribe.cx = spot.x;
       tribe.cy = spot.y;
       tribe.stress = 0;
@@ -569,6 +626,11 @@ export function subjugate(sim: Simulation, victor: Tribe, loser: Tribe): void {
   for (const a of survivors) {
     a.tribeId = victor.id;
     a.morale = Math.max(10, a.morale - T.diplomacy.subjugationMoralePenalty);
+  }
+  // The victor takes the loser's settlements as well as its people; an empire
+  // is built out of the towns it absorbs.
+  for (const camp of loser.camps) {
+    if (!victor.camps.some((c) => c.x === camp.x && c.y === camp.y)) victor.camps.push(camp);
   }
   victor.foodStore += loser.foodStore;
   victor.toolStore += loser.toolStore;

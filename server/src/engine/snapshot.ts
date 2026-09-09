@@ -133,6 +133,11 @@ export function deserialize(doc: SnapshotDoc): Simulation {
     // Added after v3: an older world simply becomes eligible to split again
     // one cooldown after it resumes.
     if (typeof tribe.lastFissionTick !== 'number') tribe.lastFissionTick = tribe.foundedTick;
+    // Settlements were added after v3: an older tribe has exactly its capital.
+    if (!Array.isArray(tribe.camps) || tribe.camps.length === 0) {
+      tribe.camps = [{ x: tribe.cx, y: tribe.cy }];
+    }
+    if (typeof tribe.lastSettlementTick !== 'number') tribe.lastSettlementTick = tribe.foundedTick;
     sim.tribes.set(tribe.id, tribe);
   }
   // Deliberately tolerant: snapshots written before this field existed simply

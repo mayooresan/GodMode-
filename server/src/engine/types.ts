@@ -194,9 +194,19 @@ export interface Tribe {
    */
   generation: number;
   color: string;
-  /** Camp / settlement centre. */
+  /** The capital: camps[0], mirrored here for the map marker and diplomacy. */
   cx: number;
   cy: number;
+  /**
+   * Every settlement this tribe holds.
+   *
+   * A tribe used to have exactly one camp, and every behaviour was anchored to
+   * it — hauling, rationing, pairing, the radius people wandered within. A
+   * large tribe therefore claimed a vast territory while actually inhabiting a
+   * bubble about thirty tiles across, leaving most of its own land untouched.
+   * Growth founds further settlements so a people spreads across what it holds.
+   */
+  camps: Array<{ x: number; y: number }>;
   foodStore: number;
   toolStore: number;
   woodStore: number;
@@ -213,6 +223,8 @@ export interface Tribe {
   extinctTick: number | null;
   /** Tick of this tribe's most recent split, for the fission cooldown. */
   lastFissionTick: number;
+  /** Tick this tribe last founded a settlement. */
+  lastSettlementTick: number;
   /**
    * All-time high-water marks, with the tick each was reached.
    *

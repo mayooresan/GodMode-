@@ -5,6 +5,7 @@ import { ADULT_AGE, ELDER_AGE, MAX_AGE, TICKS_PER_YEAR } from '../config.js';
 import type { Rng } from './rng.js';
 import type { World } from './world.js';
 import { TUNABLES as T } from './tunables.js';
+import { nearestCamp } from './camps.js';
 import type { Simulation } from './simulation.js';
 
 /** Re-exported for callers that reason about how much an agent can carry. */
@@ -164,8 +165,9 @@ function chooseState(sim: Simulation, a: Agent): AgentStateId {
     // warfare. Checking against a flat 3 left every tribe permanently "about to
     // build" and pinned a fifth of its adults on a job they could never finish.
     const shelterCap = tribe.knowledge.unlocked.warfare ? 3 : 2;
+    const home = nearestCamp(tribe, a.x, a.y);
     const needsHut =
-      tribe.knowledge.unlocked.shelter && w.shelter[w.idx(tribe.cx, tribe.cy)] < shelterCap;
+      tribe.knowledge.unlocked.shelter && w.shelter[w.idx(home.x, home.y)] < shelterCap;
     if (needsHut && sim.rng.chance(T.work.buildChance)) return AgentState.Build;
     if (tribe.knowledge.unlocked.flint && tribe.toolStore < sim.tribePopulation(tribe.id) && sim.rng.chance(T.work.craftChance)) {
       return AgentState.Craft;
@@ -306,22 +308,24 @@ export function stepAgent(sim: Simulation, a: Agent): void {
         a.stamina = Math.min(100, a.stamina + T.warmth.shelterStaminaRegen);
         a.morale = Math.min(100, a.morale + T.warmth.shelterMoraleGain);
       } else if (tribe) {
-        a.tx = tribe.cx;
-        a.ty = tribe.cy;
-        stepToward(sim, a, tribe.cx, tribe.cy);
+        const home = nearestCamp(tribe, a.x, a.y);
+        a.tx = home.x;
+        a.ty = home.y;
+        stepToward(sim, a, home.x, home.y);
       }
       break;
     }
 
     case AgentState.Deposit: {
       if (!tribe) break;
-      if (a.x === tribe.cx && a.y === tribe.cy) {
+      const drop = nearestCamp(tribe, a.x, a.y);
+      if (a.x === drop.x && a.y === drop.y) {
         tribe.foodStore += a.carrying;
         a.carrying = 0;
         a.morale = Math.min(100, a.morale + T.work.depositMoraleGain);
         clearTarget(a);
       } else {
-        stepToward(sim, a, tribe.cx, tribe.cy);
+        stepToward(sim, a, drop.x, drop.y);
       }
       break;
     }
@@ -355,7 +359,8 @@ export function stepAgent(sim: Simulation, a: Agent): void {
         w.refreshCaps(here);
         w.markDirty(here);
       } else if (tribe.knowledge.unlocked.shelter && tribe.woodStore > T.work.hutWoodCost) {
-        const camp = w.idx(tribe.cx, tribe.cy);
+        const site = nearestCamp(tribe, a.x, a.y);
+        const camp = w.idx(site.x, site.y);
         const cap = tribe.knowledge.unlocked.warfare ? 3 : 2;
         if (w.shelter[camp] < cap) {
           tribe.woodStore -= T.work.hutWoodCost;
@@ -372,7 +377,8 @@ export function stepAgent(sim: Simulation, a: Agent): void {
     case AgentState.Reproduce: {
       // Pairing itself is resolved tribe-side so both parents are consumed once.
       if (tribe) {
-        stepToward(sim, a, tribe.cx, tribe.cy);
+        const home = nearestCamp(tribe, a.x, a.y);
+        stepToward(sim, a, home.x, home.y);
         sim.mateQueue.push(a.id);
       }
       break;
@@ -399,8 +405,9 @@ export function stepAgent(sim: Simulation, a: Agent): void {
         // A self-relative random walk lets agents drift out of the tribe's
         // ration radius over time and quietly starve at the map's edge.
         const r = T.work.exploreRadius;
-        const ox = tribe ? tribe.cx : a.x;
-        const oy = tribe ? tribe.cy : a.y;
+        const home = tribe ? nearestCamp(tribe, a.x, a.y) : null;
+        const ox = home ? home.x : a.x;
+        const oy = home ? home.y : a.y;
         const nx = w.clampX(ox + sim.rng.int(-r, r));
         const ny = w.clampY(oy + sim.rng.int(-r, r));
         if (w.isPassable(w.idx(nx, ny))) {

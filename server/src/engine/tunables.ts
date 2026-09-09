@@ -185,7 +185,7 @@ export const TUNABLES = {
      * unified map is genuinely unified rather than one tribe sitting in the
      * middle of unclaimed ground.
      */
-    territoryRadiusMax: 110,
+    territoryRadiusMax: 200,
     /** Fraction of claimed carrying capacity a tribe can actually sustain. */
     carryingCapacityFactor: 0.12,
     capacityBonusFarming: 0.5,
@@ -302,6 +302,29 @@ export const TUNABLES = {
     fissionMoverShare: 0.35,
     /** Below this many movers the band is not viable and fission is skipped. */
     fissionMinMovers: 4,
+
+    /**
+     * People per settlement before the tribe founds another.
+     *
+     * This is what actually governs how large a tribe can grow. Everything a
+     * person does is anchored to their nearest settlement, so one camp can only
+     * ever support the land within walking reach of it; more settlements is how
+     * a people spreads across territory it already holds.
+     */
+    settlementPopulation: 120,
+    settlementCooldownYears: 10,
+    /** New settlements keep this far from existing ones. */
+    settlementMinDistance: 14,
+    settlementSearchRadius: 45,
+    settlementMinFoodCap: 24,
+    settlementWaterRadius: 6,
+    /**
+     * Guard on settlements per tribe. Deliberately far above anything a normal
+     * world reaches: claim radius shrinks as settlements multiply, so the cost
+     * of claiming stays roughly flat and this only exists to stop a pathological
+     * world from stalling. Tribe size is governed by land, not by this.
+     */
+    maxCampsPerTribe: 250,
     /** Progress a splinter retains, and its chance of keeping each technique. */
     fissionKnowledgeRetained: 0.6,
     fissionTechRetainChance: 0.7,
