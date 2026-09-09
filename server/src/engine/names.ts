@@ -40,6 +40,25 @@ const COLORS = [
 /** Hard cap on simultaneous tribes, so colour slots are never recycled. */
 export const MAX_TRIBES = COLORS.length;
 
+const ROMAN: Array<[number, string]> = [
+  [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+  [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+];
+
+/** Roman numeral for a tribe's generation, e.g. 3 -> "III". */
+export function roman(n: number): string {
+  if (n < 1) return 'I';
+  let rest = Math.floor(n);
+  let out = '';
+  for (const [value, sym] of ROMAN) {
+    while (rest >= value) {
+      out += sym;
+      rest -= value;
+    }
+  }
+  return out;
+}
+
 export interface TribeIdentity {
   name: string;
   totem: string;

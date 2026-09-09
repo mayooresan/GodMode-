@@ -259,6 +259,18 @@ trough lining up with a food collapse and a death spike.
 History survives restarts, and older samples are dropped once the buffer is
 full (1,200 samples by default, one per 8 ticks — roughly 100 simulated years).
 
+### Tribe generations
+
+Totems are freed for reuse when a tribe dies, so a long-running world produces
+several unrelated peoples called "Tribe of the Wolverine". Every tribe therefore
+carries a generation: **Tribe of the Wolverine III** is the third to bear that
+totem, and a records table reads as a dynastic list — `Boar VI (alive)` back
+through `Boar I (subjugated)`.
+
+The counter lives on the simulation and is persisted, rather than being derived
+from the fallen-tribe chronicle: that is capped at 80, so over a long run it
+would undercount and start reissuing numbers already used.
+
 ### A note on the colours
 
 Tribe identity is a categorical colour encoding on a dark surface, so the

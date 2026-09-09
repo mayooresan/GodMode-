@@ -186,6 +186,13 @@ export interface Tribe {
   totem: string;
   /** Emoji shown beside the tribe in the dashboard. */
   glyph: string;
+  /**
+   * Which incarnation of this totem the tribe is: 1 for the first Wolverine
+   * ever, 2 for the next one founded after it ended, and so on. Totems are
+   * freed for reuse when a tribe dies, so without this a records table shows
+   * three unrelated peoples all called "Tribe of the Wolverine".
+   */
+  generation: number;
   color: string;
   /** Camp / settlement centre. */
   cx: number;

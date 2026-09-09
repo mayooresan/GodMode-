@@ -233,6 +233,25 @@ export const TUNABLES = {
     relocateSearchRadius: 26,
     relocateMinFoodCap: 30,
     relocateWaterRadius: 4,
+    /**
+     * Ceiling on hardship, as a multiple of the relocation threshold.
+     *
+     * Hardship feeds war pressure as (A + B) / scarcityDivisor. Uncapped, a
+     * tribe boxed in for long enough would eventually be at permanent war with
+     * every neighbour on the strength of the counter alone, regardless of any
+     * actual scarcity.
+     */
+    stressCeilingMultiple: 2,
+    /**
+     * How far the relocation filter relaxes at maximum desperation.
+     *
+     * A tribe with nowhere good to go should take marginal land rather than
+     * accumulate a number for ever — which is what people boxed in on poor
+     * ground actually did.
+     */
+    desperationFoodRelief: 0.6,
+    desperationWaterRadiusBonus: 4,
+    desperationSearchBonus: 1,
     /** Population at which a tribe may bud off a daughter. */
     fissionPopulation: 55,
     fissionChance: 0.06,

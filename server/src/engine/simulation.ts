@@ -58,6 +58,14 @@ export class Simulation {
 
   tribes = new Map<number, Tribe>();
   retiredTribes: Tribe[] = [];
+  /**
+   * How many tribes have ever borne each totem.
+   *
+   * Kept on the simulation rather than counted from `retiredTribes`, which is
+   * capped at 80 — over a long run that would undercount and start reissuing
+   * generation numbers already used.
+   */
+  totemGenerations = new Map<string, number>();
 
   tick = 0;
   startedAt = Date.now();

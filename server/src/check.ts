@@ -17,6 +17,7 @@ import { Simulation } from './engine/simulation.js';
 import {
   Biome, BIOME_NAMES, OCCUPATIONS, TECHS, TECH_META,
 } from './engine/types.js';
+import { TUNABLES } from './engine/tunables.js';
 import { config } from './config.js';
 
 const ticks = Number(process.argv[2] ?? 4000);
@@ -107,6 +108,20 @@ const structural: Check[] = [
     },
   },
   {
+    name: 'hardship stays within its ceiling',
+    run: (sim) => {
+      const ceiling =
+        TUNABLES.migration.relocateStress * TUNABLES.migration.stressCeilingMultiple;
+      for (const tribe of sim.tribes.values()) {
+        if (tribe.stress > ceiling) {
+          return `${tribe.name} hardship ${Math.round(tribe.stress)} exceeds ceiling ${ceiling}`;
+        }
+        if (tribe.stress < 0) return `${tribe.name} hardship is negative`;
+      }
+      return null;
+    },
+  },
+  {
     name: 'tribal stores never go negative',
     run: (sim) => {
       for (const tribe of sim.tribes.values()) {
@@ -117,6 +132,21 @@ const structural: Check[] = [
           if (!finite(v)) return `${tribe.name} has non-finite ${k}`;
           if (v < -0.001) return `${tribe.name} has ${k} = ${v.toFixed(2)}`;
         }
+      }
+      return null;
+    },
+  },
+  {
+    name: 'no two tribes share a totem and generation',
+    run: (sim) => {
+      const seen = new Set<string>();
+      for (const tribe of [...sim.tribes.values(), ...sim.retiredTribes]) {
+        if (!Number.isInteger(tribe.generation) || tribe.generation < 1) {
+          return `${tribe.name} has generation ${tribe.generation}`;
+        }
+        const key = `${tribe.totem}#${tribe.generation}`;
+        if (seen.has(key)) return `two tribes are both ${key}`;
+        seen.add(key);
       }
       return null;
     },

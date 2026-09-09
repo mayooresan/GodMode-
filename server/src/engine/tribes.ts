@@ -3,7 +3,7 @@ import {
 } from './types.js';
 import { TICKS_PER_YEAR } from '../config.js';
 import { isAdult, isElder, mixTraits, createAgent, findNearest } from './agents.js';
-import { MAX_TRIBES, makeIdentity, placeName } from './names.js';
+import { MAX_TRIBES, makeIdentity, placeName, roman } from './names.js';
 import { TUNABLES as T } from './tunables.js';
 import type { Simulation } from './simulation.js';
 
@@ -66,11 +66,17 @@ export function createTribe(sim: Simulation, cx: number, cy: number): Tribe {
     usedColors.add(t.color);
   }
   const ident = makeIdentity(sim.rng, usedTotems, usedColors);
+  // A totem freed by a tribe dying gets reissued; the generation is what keeps
+  // the third Wolverine distinct from the first.
+  const generation = (sim.totemGenerations.get(ident.totem) ?? 0) + 1;
+  sim.totemGenerations.set(ident.totem, generation);
+
   const tribe: Tribe = {
     id: sim.nextTribeId++,
-    name: ident.name,
+    name: `${ident.name} ${roman(generation)}`,
     totem: ident.totem,
     glyph: ident.glyph,
+    generation,
     color: ident.color,
     cx,
     cy,
@@ -229,10 +235,10 @@ export function resolveReproduction(sim: Simulation): void {
     if (!tribe) continue;
     const pop = sim.tribePopulation(tribeId);
     const capacity = sim.territoryCapacity(tribe);
-    if (pop >= capacity) {
-      tribe.stress += 1;
-      continue;
-    }
+    // Hardship is accounted once per migration check, not here: this runs every
+    // tick, and incrementing on both clocks made the counter ratchet up eight
+    // times faster than it could decay.
+    if (pop >= capacity) continue;
 
     const males = candidates.filter((a) => a.sex === 0 && a.breedCooldown <= 0);
     const females = candidates.filter((a) => a.sex === 1 && a.breedCooldown <= 0);
@@ -289,15 +295,35 @@ export function migrationAndFission(sim: Simulation, tribe: Tribe): void {
   let localFood = 0;
   for (const i of tribe.territory) localFood += w.food[i];
   const perCapita = localFood / Math.max(1, pop);
-  if (perCapita < T.tribe.hardshipFoodPerHead) tribe.stress += 1;
+  // Both pressures are judged on this one clock so a single +1 can be undone
+  // by a single -1. `capacity` bites when the land cannot hold more people even
+  // though the larder is full; `perCapita` bites when the land is picked bare.
+  const overCapacity = pop >= sim.territoryCapacity(tribe);
+  const underfed = perCapita < T.tribe.hardshipFoodPerHead;
+  const ceiling = T.migration.relocateStress * T.migration.stressCeilingMultiple;
+  if (underfed || overCapacity) tribe.stress = Math.min(ceiling, tribe.stress + 1);
   else tribe.stress = Math.max(0, tribe.stress - 1);
 
   // Move camp toward better ground.
   if (tribe.stress > T.migration.relocateStress) {
-    const spot = findNearest(w, tribe.cx, tribe.cy, T.migration.relocateSearchRadius, (i, x, y) => {
+    // Desperation runs 0..1 as hardship climbs from the threshold to the
+    // ceiling, and progressively lowers the bar for somewhere to go.
+    const desperation = Math.min(
+      1,
+      (tribe.stress - T.migration.relocateStress) / T.migration.relocateStress,
+    );
+    const minFood =
+      T.migration.relocateMinFoodCap * (1 - T.migration.desperationFoodRelief * desperation);
+    const waterRadius =
+      T.migration.relocateWaterRadius +
+      Math.round(T.migration.desperationWaterRadiusBonus * desperation);
+    const searchRadius = Math.round(
+      T.migration.relocateSearchRadius * (1 + T.migration.desperationSearchBonus * desperation),
+    );
+    const spot = findNearest(w, tribe.cx, tribe.cy, searchRadius, (i, x, y) => {
       if (!w.isPassable(i) || w.isWater(i)) return false;
       if (w.owner[i] >= 0 && w.owner[i] !== tribe.id) return false;
-      return w.foodCap[i] > T.migration.relocateMinFoodCap && sim.nearWater(x, y, T.migration.relocateWaterRadius);
+      return w.foodCap[i] > minFood && sim.nearWater(x, y, waterRadius);
     });
     if (spot && (spot.x !== tribe.cx || spot.y !== tribe.cy)) {
       tribe.cx = spot.x;

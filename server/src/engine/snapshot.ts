@@ -45,6 +45,7 @@ interface SnapshotDoc {
   world: Record<string, string | number>;
   tribes: Array<Omit<Tribe, 'territory'> & { territory: number[] }>;
   /** Added after v3 shipped; absent in older snapshots, hence optional. */
+  totemGenerations?: Array<[string, number]>;
   history?: ReturnType<Simulation['history']['serialize']>;
   retiredTribes?: Array<Omit<Tribe, 'territory'> & { territory: number[] }>;
   agents: Agent[];
@@ -86,6 +87,7 @@ export function serialize(sim: Simulation): SnapshotDoc {
     tribes: [...sim.tribes.values()].map((t) => ({ ...t, territory: [...t.territory] })),
     retiredTribes: sim.retiredTribes.map((t) => ({ ...t, territory: [] })),
     history: sim.history.serialize(),
+    totemGenerations: [...sim.totemGenerations.entries()],
     agents: sim.agents.filter((a) => a.alive),
     events: sim.events,
   };
@@ -138,6 +140,20 @@ export function deserialize(doc: SnapshotDoc): Simulation {
   );
 
   for (const a of doc.agents) sim.addAgent(a);
+
+  // Generations were added after v3 shipped. An older world has none, so seed
+  // the counters from the tribes it does have — every existing tribe becomes
+  // the first of its totem, and the next reuse is numbered from there.
+  if (doc.totemGenerations) {
+    sim.totemGenerations = new Map(doc.totemGenerations);
+  } else {
+    for (const tribe of [...sim.tribes.values(), ...sim.retiredTribes]) {
+      const t = tribe as Partial<Tribe> & Tribe;
+      const seen = sim.totemGenerations.get(tribe.totem) ?? 0;
+      if (typeof t.generation !== 'number') t.generation = seen + 1;
+      sim.totemGenerations.set(tribe.totem, Math.max(seen + 1, t.generation));
+    }
+  }
 
   // Records were added after v3 shipped. Default them from present state, then
   // raise them with whatever the retained history can prove — so a world that
