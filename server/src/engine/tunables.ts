@@ -400,6 +400,13 @@ export const TUNABLES = {
     aggressionFloor: 0.6,
     warfareTechAdvantage: 1.45,
     palisadeAdvantage: 1.3,
+    /**
+     * Bonus for fighting on ground your own tribe claims, before terrain.
+     *
+     * Multiplied by the biome's `defence`, so defending your own plains is a
+     * modest edge while defending your own mountains is formidable.
+     */
+    homeFamiliarity: 1.1,
     rollMin: 0.7,
     rollMax: 1.3,
     staminaPerAdvance: 2,

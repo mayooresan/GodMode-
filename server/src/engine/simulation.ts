@@ -1,5 +1,5 @@
 import {
-  Agent, AgentState, AGENT_STATE_INDEX, Biome, OCCUPATIONS, OCCUPATION_OF_STATE,
+  Agent, AgentState, AGENT_STATE_INDEX, Biome, BIOME_PROFILE, OCCUPATIONS, OCCUPATION_OF_STATE,
   Relation, TECHS, TECH_META, Tribe, Vitals, WorldEvent,
 } from './types.js';
 import { World, generateWorld } from './world.js';
@@ -517,11 +517,17 @@ export class Simulation {
       const t = this.tribes.get(x.tribeId);
       const tools = t ? Math.min(1, t.toolStore / Math.max(1, this.tribePopulation(t.id))) : 0;
       const tech = t?.knowledge.unlocked.warfare ? T.combat.warfareTechAdvantage : 1;
-      const fort = this.world.shelter[this.world.idx(x.x, x.y)] >= 3 ? T.combat.palisadeAdvantage : 1;
+      const i = this.world.idx(x.x, x.y);
+      const fort = this.world.shelter[i] >= 3 ? T.combat.palisadeAdvantage : 1;
+      // Home advantage: rough ground only helps the people who hold it, so
+      // marching into someone's mountains is as costly as it should be.
+      const home = this.world.owner[i] === x.tribeId
+        ? T.combat.homeFamiliarity * BIOME_PROFILE[this.world.biome[i]].defence
+        : 1;
       return (x.health / 100) *
         (1 + tools * T.combat.toolAdvantage) *
         (T.combat.aggressionFloor + x.traits.aggression) *
-        tech * fort;
+        tech * fort * home;
     };
     const pa = power(a) * this.rng.range(T.combat.rollMin, T.combat.rollMax);
     const pb = power(b) * this.rng.range(T.combat.rollMin, T.combat.rollMax);

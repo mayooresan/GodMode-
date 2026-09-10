@@ -39,16 +39,23 @@ export interface BiomeProfile {
   passable: boolean;
   /** Fraction of capacity regenerated per tick. */
   regen: number;
+  /**
+   * Combat multiplier for a defender fighting on this ground.
+   *
+   * Applied only to a fighter standing on their own tribe's claimed land, so it
+   * is a home advantage rather than free cover for whoever walks in.
+   */
+  defence: number;
 }
 
 export const BIOME_PROFILE: Record<number, BiomeProfile> = {
-  [Biome.DeepWater]:    { food: 12, water: 0,   wood: 0,  stone: 0,  carrying: 0,  moveCost: 99, passable: false, regen: 0.020 },
-  [Biome.ShallowWater]: { food: 34, water: 100, wood: 4,  stone: 2,  carrying: 4,  moveCost: 1.4, passable: true, regen: 0.030 },
-  [Biome.Plains]:       { food: 46, water: 12,  wood: 6,  stone: 4,  carrying: 10, moveCost: 1.0, passable: true, regen: 0.022 },
-  [Biome.Forest]:       { food: 38, water: 18,  wood: 90, stone: 6,  carrying: 8,  moveCost: 1.5, passable: true, regen: 0.018 },
-  [Biome.Hills]:        { food: 18, water: 8,   wood: 22, stone: 80, carrying: 6,  moveCost: 1.8, passable: true, regen: 0.014 },
-  [Biome.Mountain]:     { food: 5,  water: 4,   wood: 6,  stone: 120,carrying: 2,  moveCost: 3.0, passable: true, regen: 0.010 },
-  [Biome.Desert]:       { food: 7,  water: 1,   wood: 1,  stone: 14, carrying: 1,  moveCost: 2.2, passable: true, regen: 0.006 },
+  [Biome.DeepWater]:    { food: 12, water: 0,   wood: 0,  stone: 0,  carrying: 0,  moveCost: 99, passable: false, regen: 0.020, defence: 1.0 },
+  [Biome.ShallowWater]: { food: 34, water: 100, wood: 4,  stone: 2,  carrying: 4,  moveCost: 1.4, passable: true, regen: 0.030, defence: 0.85 },
+  [Biome.Plains]:       { food: 46, water: 12,  wood: 6,  stone: 4,  carrying: 10, moveCost: 1.0, passable: true, regen: 0.022, defence: 1.0 },
+  [Biome.Forest]:       { food: 38, water: 18,  wood: 90, stone: 6,  carrying: 8,  moveCost: 1.5, passable: true, regen: 0.018, defence: 1.3 },
+  [Biome.Hills]:        { food: 18, water: 8,   wood: 22, stone: 80, carrying: 6,  moveCost: 1.8, passable: true, regen: 0.014, defence: 1.5 },
+  [Biome.Mountain]:     { food: 5,  water: 4,   wood: 6,  stone: 120,carrying: 2,  moveCost: 3.0, passable: true, regen: 0.010, defence: 2.0 },
+  [Biome.Desert]:       { food: 7,  water: 1,   wood: 1,  stone: 14, carrying: 1,  moveCost: 2.2, passable: true, regen: 0.006, defence: 1.0 },
 };
 
 export const AgentState = {
