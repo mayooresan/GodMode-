@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import MapCanvas, { MAX_SCALE, MIN_SCALE } from './MapCanvas';
 import type { Camera, HoverInfo, Overlay } from './MapCanvas';
 import GodConsole from './GodConsole';
-import { BIOME_LABEL, STATE_LABEL } from '../lib/types';
+import TribeInspector from './TribeInspector';
 import type { AgentFrame, TribeRow, Vitals, WorldState } from '../lib/types';
 import type { ConnectionState } from '../lib/useSimStream';
 
@@ -38,6 +38,9 @@ export default function MapPage({
   const [focusTribeId, setFocusTribeId] = useState<number | null>(null);
   const [selected, setSelected] = useState<{ x: number; y: number } | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  // Hold the last inspected tile so the panel does not blank when the cursor
+  // leaves the map to read it.
+  const [held, setHeld] = useState<HoverInfo | null>(null);
   const [radius, setRadius] = useState(4);
   const [consoleOpen, setConsoleOpen] = useState(true);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -136,7 +139,11 @@ export default function MapPage({
     return () => window.removeEventListener('keydown', onKey);
   }, [camera, vp]);
 
-  const readout = hover;
+  const readout = hover ?? held;
+  const hoveredTribe = readout && readout.owner >= 0
+    ? tribes.find((t) => t.id === readout.owner)
+    : undefined;
+  const claimedTiles = tribes.reduce((n, t) => n + t.territory, 0);
   const conn = connection === 'live' ? 'bg-good' : connection === 'connecting' ? 'bg-warning animate-pulse' : 'bg-critical';
 
   return (
@@ -233,6 +240,14 @@ export default function MapPage({
 
       {/* ---------------------------------------------------------------- body */}
       <div className="flex min-h-0 flex-1">
+        <TribeInspector
+          info={readout}
+          tribe={hoveredTribe}
+          allTribes={tribes}
+          landTiles={claimedTiles}
+          onFocusTribe={(id) => setFocusTribeId((cur) => (cur === id ? null : id))}
+        />
+
         <div ref={viewportRef} className="relative min-w-0 flex-1">
           <MapCanvas
             world={world}
@@ -248,49 +263,11 @@ export default function MapPage({
             camera={camera}
             onCameraChange={moveCamera}
             onSelect={(x, y) => setSelected({ x, y })}
-            onHover={setHover}
+            onHover={(i) => {
+              setHover(i);
+              if (i) setHeld(i);
+            }}
           />
-
-          {/* Hover / selection readout */}
-          <div className="pointer-events-none absolute bottom-3 left-3 max-w-xs rounded-lg border border-edge bg-surface-1/95 px-3 py-2 text-[11px] backdrop-blur">
-            {readout ? (
-              <>
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-mono text-ink-primary">{readout.x}, {readout.y}</span>
-                  <span className="text-ink-secondary">{BIOME_LABEL[readout.biome]}</span>
-                </div>
-                <div className="mt-1 space-y-0.5 text-ink-muted">
-                  {readout.food !== null && <div>Forage <span className="text-ink-secondary">{readout.food}% of capacity</span></div>}
-                  <div>
-                    Owner{' '}
-                    <span className="text-ink-secondary">
-                      {readout.owner >= 0
-                        ? tribes.find((t) => t.id === readout.owner)?.name ?? `Tribe ${readout.owner}`
-                        : 'unclaimed'}
-                    </span>
-                  </div>
-                  {readout.agents > 0 && (
-                    <div>
-                      {readout.agents} {readout.agents === 1 ? 'person' : 'people'}{' '}
-                      <span className="text-ink-secondary">
-                        {[...new Set(readout.states)].map((s) => STATE_LABEL[s] ?? s).join(', ')}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex flex-wrap gap-1 pt-0.5">
-                    {readout.cultivated && <Tag tone="good">cultivated</Tag>}
-                    {readout.shelter && <Tag tone="good">shelter</Tag>}
-                    {readout.blessed && <Tag tone="divine">blessed</Tag>}
-                    {readout.cursed && <Tag tone="bad">cursed</Tag>}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <span className="text-ink-muted">
-                Drag to pan · scroll to zoom · click a tile to target
-              </span>
-            )}
-          </div>
 
           {selected && (
             <div className="absolute right-3 top-3 rounded-lg border border-edge bg-surface-1/95 px-3 py-2 font-mono text-[11px] text-ink-secondary backdrop-blur">
@@ -313,13 +290,4 @@ export default function MapPage({
       </div>
     </div>
   );
-}
-
-function Tag({ children, tone }: { children: React.ReactNode; tone: 'good' | 'bad' | 'divine' }) {
-  const cls = {
-    good: 'border-good/50 text-good',
-    bad: 'border-critical/50 text-critical',
-    divine: 'border-divine/50 text-divine',
-  }[tone];
-  return <span className={`rounded border bg-surface-2 px-1.5 py-0.5 ${cls}`}>{children}</span>;
 }

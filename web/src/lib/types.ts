@@ -37,6 +37,8 @@ export interface TribeRow {
   color: string;
   cx: number;
   cy: number;
+  /** Every settlement as [x, y], capital first. */
+  camps: Array<[number, number]>;
   population: number;
   infants: number;
   adults: number;

@@ -141,6 +141,10 @@ export default function WorldMap({
           >
             {tribes.map((t) => (
               <g key={t.id} opacity={focusTribeId === null || focusTribeId === t.id ? 1 : 0.3}>
+                {/* Outlying settlements — a large tribe holds many of these. */}
+                {(t.camps ?? []).slice(1).map(([sx, sy], k) => (
+                  <circle key={k} cx={sx + 0.5} cy={sy + 0.5} r={1} fill={t.color} />
+                ))}
                 <circle
                   cx={t.cx + 0.5}
                   cy={t.cy + 0.5}

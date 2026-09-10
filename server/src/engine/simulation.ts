@@ -827,6 +827,8 @@ export class Simulation {
         color: tribe.color,
         cx: tribe.cx,
         cy: tribe.cy,
+        /** Every settlement, capital first, so the map can show the whole empire. */
+        camps: tribe.camps.map((c) => [c.x, c.y] as [number, number]),
         population: members.length,
         infants,
         adults,
