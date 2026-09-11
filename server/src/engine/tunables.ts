@@ -325,6 +325,12 @@ export const TUNABLES = {
      * world from stalling. Tribe size is governed by land, not by this.
      */
     maxCampsPerTribe: 250,
+    /**
+     * A settlement cut off from its tribe's core land breaks away as a new
+     * tribe, provided at least this many people live around it. Smaller
+     * stranded outposts are simply abandoned.
+     */
+    isolatedMinPeople: 6,
     /** Progress a splinter retains, and its chance of keeping each technique. */
     fissionKnowledgeRetained: 0.6,
     fissionTechRetainChance: 0.7,

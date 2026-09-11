@@ -9,6 +9,7 @@ import {
 } from './agents.js';
 import {
   advanceKnowledge, createTribe, depositResearch, foundSettlement, migrationAndFission,
+  splitIsolatedSettlements,
   resolveReproduction, setRelation, subjugate, updateDiplomacy, updateTerritory,
 } from './tribes.js';
 import { placeName } from './names.js';
@@ -651,6 +652,7 @@ export class Simulation {
       tribe.foodStore = Math.max(0, tribe.foodStore * T.tribe.storeSpoilagePerTick);
       if ((this.tick + tribe.id) % 8 === 0) {
         updateTerritory(this, tribe);
+        splitIsolatedSettlements(this, tribe);
         foundSettlement(this, tribe);
         migrationAndFission(this, tribe);
       }

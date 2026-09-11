@@ -297,6 +297,139 @@ export function resolveReproduction(sim: Simulation): void {
   }
 }
 
+/** Connected regions of a tribe's claimed land (8-neighbour), as tile lists. */
+function territoryRegions(sim: Simulation, tribe: Tribe): number[][] {
+  const w = sim.world;
+  const seen = new Set<number>();
+  const regions: number[][] = [];
+  for (const start of tribe.territory) {
+    if (seen.has(start)) continue;
+    const region: number[] = [];
+    const stack = [start];
+    seen.add(start);
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      region.push(i);
+      const x = i % w.width;
+      const y = (i / w.width) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (!w.inBounds(nx, ny)) continue;
+          const n = w.idx(nx, ny);
+          if (seen.has(n) || !tribe.territory.has(n)) continue;
+          seen.add(n);
+          stack.push(n);
+        }
+      }
+    }
+    regions.push(region);
+  }
+  return regions;
+}
+
+/** The region holding the capital, or the largest if the capital is unclaimed. */
+function coreRegion(sim: Simulation, tribe: Tribe): Set<number> {
+  const regions = territoryRegions(sim, tribe);
+  const capital = sim.world.idx(tribe.cx, tribe.cy);
+  const found = regions.find((r) => r.includes(capital)) ??
+    regions.reduce<number[]>((a, b) => (b.length > a.length ? b : a), []);
+  return new Set(found);
+}
+
+function touchesCore(sim: Simulation, core: Set<number>, x: number, y: number): boolean {
+  const w = sim.world;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (w.inBounds(nx, ny) && core.has(w.idx(nx, ny))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Settlements cut off from the tribe's core land break away.
+ *
+ * Territory is claimed around every settlement, so when a rival's claim, a
+ * lost border or open sea separates a settlement's land from the capital's,
+ * that settlement is isolated. If enough people live around it, it declares
+ * itself a new tribe, taking its settlements, its people and a proportional
+ * share of the food. Too few people and the outpost is simply abandoned.
+ */
+export function splitIsolatedSettlements(sim: Simulation, tribe: Tribe): void {
+  if (tribe.camps.length < 2 || tribe.territory.size === 0) return;
+  const w = sim.world;
+  const regions = territoryRegions(sim, tribe);
+  if (regions.length < 2) return;
+
+  const capital = w.idx(tribe.cx, tribe.cy);
+  const core = regions.find((r) => r.includes(capital)) ??
+    regions.reduce((a, b) => (b.length > a.length ? b : a));
+
+  for (const region of regions) {
+    if (region === core) continue;
+    const tiles = new Set(region);
+    const cut = tribe.camps.filter((c) => tiles.has(w.idx(c.x, c.y)));
+    if (cut.length === 0) continue;
+
+    const people = sim.agents.filter((a) => {
+      if (!a.alive || a.tribeId !== tribe.id) return false;
+      const home = nearestCamp(tribe, a.x, a.y);
+      return cut.includes(home);
+    });
+
+    // Too few to stand alone, or no colour slot free: abandon the outpost.
+    // Its people re-anchor to the nearest settlement still held.
+    if (people.length < T.migration.isolatedMinPeople || sim.tribes.size >= MAX_TRIBES) {
+      if (people.length < T.migration.isolatedMinPeople) {
+        tribe.camps = tribe.camps.filter((c) => !cut.includes(c));
+      }
+      continue;
+    }
+
+    const pop = Math.max(1, sim.tribePopulation(tribe.id));
+    const seat = cut[0];
+    const breakaway = createTribe(sim, seat.x, seat.y);
+    breakaway.camps = cut.map((c) => ({ x: c.x, y: c.y }));
+
+    for (const t of TECHS) {
+      breakaway.knowledge.progress[t] = tribe.knowledge.progress[t];
+      breakaway.knowledge.unlocked[t] = tribe.knowledge.unlocked[t];
+    }
+    normaliseKnowledge(breakaway);
+
+    const share = Math.min(1, people.length / pop);
+    breakaway.foodStore = tribe.foodStore * share;
+    tribe.foodStore -= breakaway.foodStore;
+
+    for (const a of people) a.tribeId = breakaway.id;
+    tribe.camps = tribe.camps.filter((c) => !cut.includes(c));
+
+    // Hand the isolated land over now rather than on the next claim pass.
+    for (const i of region) {
+      tribe.territory.delete(i);
+      breakaway.territory.add(i);
+      w.owner[i] = breakaway.id;
+      w.markDirty(i);
+    }
+
+    sim.log({
+      kind: 'settlement',
+      severity: 'warn',
+      tribeId: breakaway.id,
+      x: seat.x,
+      y: seat.y,
+      text: `Cut off from ${tribe.name}, ${cut.length} settlement${cut.length === 1 ? '' : 's'} in the ` +
+        `${placeName(seat.x, seat.y, w.width, w.height)} declared independence as ${breakaway.name} ` +
+        `(${people.length} people).`,
+    });
+  }
+}
+
 /**
  * Found a further settlement inside the tribe's own reach.
  *
@@ -320,10 +453,13 @@ export function foundSettlement(sim: Simulation, tribe: Tribe): void {
     return count > best.count ? { camp: c, count } : best;
   }, { camp: tribe.camps[0], count: -1 }).camp;
 
+  const core = coreRegion(sim, tribe);
   const spot = findNearest(w, origin.x, origin.y, T.migration.settlementSearchRadius, (i, x, y) => {
     if (!w.isPassable(i) || w.isWater(i)) return false;
-    // Its own land, or ground nobody has claimed.
+    // Inside the connected core, or unclaimed ground right at its edge — so a
+    // new settlement starts joined to the tribe rather than already cut off.
     if (w.owner[i] >= 0 && w.owner[i] !== tribe.id) return false;
+    if (!core.has(i) && !touchesCore(sim, core, x, y)) return false;
     for (const c of tribe.camps) {
       if (Math.hypot(x - c.x, y - c.y) < T.migration.settlementMinDistance) return false;
     }
